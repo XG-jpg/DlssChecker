@@ -5,6 +5,8 @@
 [![Windows](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](#)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?style=for-the-badge)](#)
 
+[![Download](https://img.shields.io/github/v/release/XG-jpg/DlssChecker?label=Download&style=for-the-badge&color=2ea44f)](https://github.com/XG-jpg/DlssChecker/releases/latest/download/DlssChecker.exe)
+
 ## RU
 
 Windows-утилита для проверки и обновления `nvngx_dlss*.dll` в играх, установки `DLSSTweaks` с готовыми пресетами, создания бэкапа и отката изменений.

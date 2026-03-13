@@ -70,7 +70,54 @@ public partial class MainWindow : Window
             win.ShowDialog();
         }
 
+        OfferDesktopShortcut(baseDir);
+
         await ScanGameLibrariesAsync();
+    }
+
+    private void OfferDesktopShortcut(string baseDir)
+    {
+        var flagPath = Path.Combine(baseDir, ".shortcut_asked");
+        if (File.Exists(flagPath)) return;
+
+        try { File.WriteAllText(flagPath, "1"); } catch { /* ignore */ }
+
+        var result = MessageBox.Show(
+            T("shortcut_prompt"),
+            T("app_name"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes) return;
+
+        try
+        {
+            var exePath = Process.GetCurrentProcess().MainModule?.FileName
+                          ?? Path.Combine(baseDir, "DlssChecker.exe");
+            var shortcutPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                "DLSS Checker.lnk");
+
+            var shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+            var shortcut = shell.GetType().InvokeMember(
+                "CreateShortcut", System.Reflection.BindingFlags.InvokeMethod,
+                null, shell, new object[] { shortcutPath })!;
+            var st = shortcut.GetType();
+            st.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty,
+                null, shortcut, new object[] { exePath });
+            st.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty,
+                null, shortcut, new object[] { baseDir });
+            st.InvokeMember("IconLocation", System.Reflection.BindingFlags.SetProperty,
+                null, shortcut, new object[] { exePath + ",0" });
+            st.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod,
+                null, shortcut, null);
+
+            UpdateStatusText.Text = T("shortcut_created");
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text = string.Format(T("shortcut_error"), ex.Message);
+        }
     }
 
     private async Task ScanGameLibrariesAsync()

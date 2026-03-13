@@ -61,7 +61,10 @@
       "app_up_to_date": "У вас уже установлена последняя версия приложения: {0}",
       "app_update_available": "Доступна новая версия приложения.\n\nТекущая: {0}\nНовая: {1}\n\nОбновить сейчас? Приложение перезапустится автоматически.",
       "app_update_check_error": "Ошибка проверки обновления приложения: {0}",
-      "app_update_apply_error": "Не удалось применить обновление: {0}"
+      "app_update_apply_error": "Не удалось применить обновление: {0}",
+      "shortcut_prompt": "Создать ярлык DLSS Checker на рабочем столе?",
+      "shortcut_created": "Ярлык создан на рабочем столе.",
+      "shortcut_error": "Не удалось создать ярлык: {0}"
     },
     "en": {
       "window_title": "DLSS Checker v0.0.3",
@@ -123,7 +126,10 @@
       "app_up_to_date": "You already have the latest app version: {0}",
       "app_update_available": "A new app version is available.\n\nCurrent: {0}\nNew: {1}\n\nUpdate now? The app will restart automatically.",
       "app_update_check_error": "App update check error: {0}",
-      "app_update_apply_error": "Failed to apply update: {0}"
+      "app_update_apply_error": "Failed to apply update: {0}",
+      "shortcut_prompt": "Create a DLSS Checker shortcut on the desktop?",
+      "shortcut_created": "Shortcut created on the desktop.",
+      "shortcut_error": "Could not create shortcut: {0}"
     }
   }
 }
