@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.0.4
+
+### RU
+
+- **индикатор обновления на тайле**: каждая карточка игры теперь показывает цветную точку в углу — оранжевая (доступно обновление DLSS), зелёная (версия актуальна); точка появляется при запуске, версии сравниваются с актуальной прямо с GitHub
+- **последняя версия DLSS с GitHub**: поле «Последняя версия» теперь подтягивается с официального репозитория `NVIDIA/DLSS` в реальном времени, а не из встроенного файла; при отсутствии сети — фолбэк на локальное значение
+- **выделение выбранной игры**: клик на карточку игры теперь подсвечивает её зелёной рамкой и тёмно-зелёным фоном
+- **предложение создать ярлык**: при первом запуске приложение предлагает создать ярлык на рабочем столе (показывается один раз)
+- **кнопка загрузки в README**: добавлена прямая ссылка на скачивание актуального `.exe` из последнего релиза
+- **тёмный заголовок окна**: системная полоса заголовка теперь тёмная, соответствует теме приложения
+
+### EN
+
+- **update dot on tile**: each game tile now shows a colored dot in the corner — orange (DLSS update available), green (up to date); dots appear on startup, versions are compared against the latest from GitHub
+- **latest DLSS version from GitHub**: the "Latest version" field now fetches from the official `NVIDIA/DLSS` repository in real time instead of a bundled file; falls back to local value when offline
+- **selected game highlight**: clicking a game tile highlights it with a green border and dark green background
+- **desktop shortcut offer**: on first launch the app offers to create a desktop shortcut (shown once)
+- **download button in README**: added a direct download link to the latest release `.exe`
+- **dark title bar**: the system window title bar is now dark, matching the app theme
+
 ## v0.0.3
 
 ### RU

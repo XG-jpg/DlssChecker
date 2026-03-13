@@ -2,10 +2,12 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using MessageBox = System.Windows.MessageBox;
 using DlssChecker.Models;
@@ -15,7 +17,7 @@ namespace DlssChecker;
 
 public partial class MainWindow : Window
 {
-    private const string AppVersion = "0.0.3";
+    private const string AppVersion = "0.0.4";
     private const string TweaksVersion = "0.310.5.0";
     private const string RepositoryUrl = "https://github.com/XG-jpg/DllsChecker";
     private const string RepositoryOwner = "XG-jpg";
@@ -56,6 +58,17 @@ public partial class MainWindow : Window
         TweaksStatusText.Visibility = Visibility.Collapsed;
 
         Loaded += OnLoaded;
+        SourceInitialized += (_, _) => EnableDarkTitleBar();
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+    private void EnableDarkTitleBar()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        int dark = 1;
+        DwmSetWindowAttribute(hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, ref dark, sizeof(int));
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -126,7 +139,13 @@ public partial class MainWindow : Window
         GameScanBar.Visibility = Visibility.Visible;
         GamesPanelBorder.Visibility = Visibility.Visible;
 
-        var games = await Task.Run(() => _gameLibraryScanner.Scan());
+        var (games, latestRelease) = await Task.Run(async () =>
+        {
+            var g = _gameLibraryScanner.Scan();
+            NvidiaDlssRelease? rel = null;
+            try { rel = await _nvidiaDlssService.GetLatestAsync(); } catch { }
+            return (g, rel);
+        });
 
         GameScanBar.Visibility = Visibility.Collapsed;
 
@@ -134,6 +153,24 @@ public partial class MainWindow : Window
         {
             GamesPanelBorder.Visibility = Visibility.Collapsed;
             return;
+        }
+
+        if (latestRelease?.Version != null && Version.TryParse(latestRelease.Version, out var latestVer))
+        {
+            var updatedGames = games.Select(g =>
+            {
+                if (g.DlssVersion != null && Version.TryParse(g.DlssVersion, out var gameVer))
+                {
+                    return new GameEntry
+                    {
+                        Name = g.Name, FolderPath = g.FolderPath,
+                        DlssVersion = g.DlssVersion, Icon = g.Icon,
+                        NeedsUpdate = gameVer < latestVer
+                    };
+                }
+                return g;
+            }).ToList();
+            games = updatedGames;
         }
 
         DetectedGamesTitleText.Text = T("detected_games");
@@ -181,10 +218,19 @@ public partial class MainWindow : Window
 
     private string TF(string key, params object[] args) => _loc.Format(key, args);
 
+    private void ClearTileSelection()
+    {
+        if (GameTilesList.ItemsSource is System.Collections.Generic.List<GameEntry> games)
+            foreach (var g in games) g.IsSelected = false;
+    }
+
     private async void OnGameTileClick(object sender, MouseButtonEventArgs e)
     {
         if (_isBusy) return;
         if (sender is not FrameworkElement { DataContext: GameEntry entry }) return;
+
+        ClearTileSelection();
+        entry.IsSelected = true;
 
         GamePathBox.Text = entry.FolderPath;
         await RunBusy(ScanAsync);
@@ -192,14 +238,12 @@ public partial class MainWindow : Window
 
     private async void OnBrowse(object sender, RoutedEventArgs e)
     {
-        if (_isBusy)
-        {
-            return;
-        }
+        if (_isBusy) return;
 
         using var dialog = new FolderBrowserDialog();
         if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
         {
+            ClearTileSelection();
             GamePathBox.Text = dialog.SelectedPath;
             await RunBusy(ScanAsync);
         }
@@ -218,11 +262,24 @@ public partial class MainWindow : Window
             ShowWarning(TF("scan_error", ex.Message));
         }
 
-        _latest = await _versionRepo.GetLatestAsync();
+        _latest = await FetchLatestDlssVersionAsync();
         _hasBackup = DetermineHasBackup();
 
         UpdateContextUi();
         UpdateButtonsState();
+    }
+
+    private async Task<DlssVersionInfo?> FetchLatestDlssVersionAsync()
+    {
+        try
+        {
+            var release = await _nvidiaDlssService.GetLatestAsync();
+            if (release?.Version != null)
+                return new DlssVersionInfo { LatestVersion = release.Version, DownloadUrl = release.DownloadUrl };
+        }
+        catch { /* no network — fall back */ }
+
+        return await _versionRepo.GetLatestAsync();
     }
 
     private async void OnUpdateDlss(object sender, RoutedEventArgs e)
@@ -242,7 +299,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                _latest ??= await _versionRepo.GetLatestAsync();
+                _latest ??= await FetchLatestDlssVersionAsync();
                 if (_latest == null)
                 {
                     ShowWarning(T("dlss_info_unavailable"));
