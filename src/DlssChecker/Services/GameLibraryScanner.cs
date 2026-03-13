@@ -20,17 +20,20 @@ public sealed class GameLibraryScanner
     {
         var results = new List<GameEntry>();
 
-        foreach (var (name, path) in EnumerateGameFolders())
+        foreach (var (name, path, iconPath) in EnumerateGameFolders())
         {
             var dlssPath = FindDlss(path);
             if (dlssPath == null) continue;
+
+            var icon = iconPath != null ? TryLoadImageFile(iconPath) : null;
+            icon ??= TryGetExeIcon(path);
 
             results.Add(new GameEntry
             {
                 Name = name,
                 FolderPath = path,
                 DlssVersion = TryGetVersion(dlssPath),
-                Icon = TryGetIcon(path)
+                Icon = icon
             });
         }
 
@@ -41,7 +44,7 @@ public sealed class GameLibraryScanner
             .ToList();
     }
 
-    private IEnumerable<(string name, string path)> EnumerateGameFolders()
+    private IEnumerable<(string name, string path, string? iconPath)> EnumerateGameFolders()
     {
         return GetSteamGameFolders()
             .Concat(GetEpicGameFolders())
@@ -79,13 +82,39 @@ public sealed class GameLibraryScanner
         }
     }
 
-    private static ImageSource? TryGetIcon(string folder)
+    private static ImageSource? TryLoadImageFile(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath)) return null;
+
+            var img = new BitmapImage();
+            img.BeginInit();
+            img.CacheOption = BitmapCacheOption.OnLoad;
+            img.UriSource = new Uri(filePath, UriKind.Absolute);
+            img.DecodePixelWidth = 64;
+            img.EndInit();
+            img.Freeze();
+            return img;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static ImageSource? TryGetExeIcon(string folder)
     {
         try
         {
             var exe = Directory.EnumerateFiles(folder, "*.exe", SearchOption.TopDirectoryOnly)
-                .Where(f => !Path.GetFileName(f).StartsWith("unins", StringComparison.OrdinalIgnoreCase)
-                         && !Path.GetFileName(f).StartsWith("crash", StringComparison.OrdinalIgnoreCase))
+                .Where(f =>
+                {
+                    var n = Path.GetFileName(f);
+                    return !n.StartsWith("unins", StringComparison.OrdinalIgnoreCase)
+                        && !n.StartsWith("crash", StringComparison.OrdinalIgnoreCase)
+                        && !n.StartsWith("setup", StringComparison.OrdinalIgnoreCase);
+                })
                 .OrderByDescending(f => new FileInfo(f).Length)
                 .FirstOrDefault();
 
@@ -115,7 +144,7 @@ public sealed class GameLibraryScanner
 
     // ── Steam ─────────────────────────────────────────────────────────────
 
-    private static IEnumerable<(string name, string path)> GetSteamGameFolders()
+    private static IEnumerable<(string name, string path, string? iconPath)> GetSteamGameFolders()
     {
         var steamPath =
             Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath", null) as string
@@ -123,6 +152,7 @@ public sealed class GameLibraryScanner
 
         if (steamPath == null) yield break;
 
+        var iconCacheDir = Path.Combine(steamPath, "appcache", "librarycache");
         var libraries = new List<string> { Path.Combine(steamPath, "steamapps") };
 
         var vdfPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
@@ -139,19 +169,81 @@ public sealed class GameLibraryScanner
             }
         }
 
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var lib in libraries)
         {
             var common = Path.Combine(lib, "common");
             if (!Directory.Exists(common)) continue;
 
-            foreach (var gameDir in TryEnumerateDirs(common))
-                yield return (Path.GetFileName(gameDir), gameDir);
+            foreach (var acfFile in TryEnumerateFiles(lib, "appmanifest_*.acf"))
+            {
+                var (appId, name, installDir) = ParseAcf(acfFile);
+                if (name == null || installDir == null) continue;
+
+                var gamePath = Path.Combine(common, installDir);
+                if (!Directory.Exists(gamePath)) continue;
+                if (!seen.Add(gamePath)) continue;
+
+                // Try icon: _icon.jpg → _library_600x900.jpg → _header.jpg
+                string? iconPath = null;
+                if (appId != null && Directory.Exists(iconCacheDir))
+                {
+                    iconPath =
+                        TryIconPath(iconCacheDir, appId, "_icon.jpg")
+                        ?? TryIconPath(iconCacheDir, appId, "_library_600x900.jpg")
+                        ?? TryIconPath(iconCacheDir, appId, "_header.jpg");
+                }
+
+                yield return (name, gamePath, iconPath);
+            }
         }
+    }
+
+    private static string? TryIconPath(string dir, string appId, string suffix)
+    {
+        var p = Path.Combine(dir, appId + suffix);
+        return File.Exists(p) ? p : null;
+    }
+
+    private static (string? appId, string? name, string? installDir) ParseAcf(string filePath)
+    {
+        try
+        {
+            string? appId = null, name = null, installDir = null;
+            foreach (var raw in File.ReadAllLines(filePath))
+            {
+                var line = raw.Trim();
+                if (TryReadVdfValue(line, "appid", out var v)) appId = v;
+                else if (TryReadVdfValue(line, "name", out v)) name = v;
+                else if (TryReadVdfValue(line, "installdir", out v)) installDir = v;
+
+                if (appId != null && name != null && installDir != null) break;
+            }
+            return (appId, name, installDir);
+        }
+        catch
+        {
+            return (null, null, null);
+        }
+    }
+
+    private static bool TryReadVdfValue(string line, string key, out string? value)
+    {
+        value = null;
+        var parts = line.Split('"');
+        // Format: "key"   "value"  → parts[1] = key, parts[3] = value
+        if (parts.Length >= 4 && string.Equals(parts[1], key, StringComparison.OrdinalIgnoreCase))
+        {
+            value = parts[3];
+            return true;
+        }
+        return false;
     }
 
     // ── Epic Games ────────────────────────────────────────────────────────
 
-    private static IEnumerable<(string name, string path)> GetEpicGameFolders()
+    private static IEnumerable<(string name, string path, string? iconPath)> GetEpicGameFolders()
     {
         var manifestDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
@@ -161,7 +253,7 @@ public sealed class GameLibraryScanner
 
         foreach (var item in TryEnumerateFiles(manifestDir, "*.item"))
         {
-            (string name, string path)? entry = null;
+            (string name, string path, string? iconPath)? entry = null;
             try
             {
                 using var doc = JsonDocument.Parse(File.ReadAllText(item));
@@ -169,7 +261,7 @@ public sealed class GameLibraryScanner
                 var location = root.TryGetProperty("InstallLocation", out var loc) ? loc.GetString() : null;
                 var display = root.TryGetProperty("DisplayName", out var dn) ? dn.GetString() : null;
                 if (location != null && display != null && Directory.Exists(location))
-                    entry = (display, location);
+                    entry = (display, location, null);
             }
             catch { }
 
@@ -179,7 +271,7 @@ public sealed class GameLibraryScanner
 
     // ── GOG Galaxy ────────────────────────────────────────────────────────
 
-    private static IEnumerable<(string name, string path)> GetGogGameFolders()
+    private static IEnumerable<(string name, string path, string? iconPath)> GetGogGameFolders()
     {
         var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\GOG.com\Games")
                ?? Registry.LocalMachine.OpenSubKey(@"SOFTWARE\GOG.com\Games");
@@ -193,7 +285,7 @@ public sealed class GameLibraryScanner
             var path = sub.GetValue("path") as string;
             var name = sub.GetValue("gameName") as string;
             if (path != null && name != null && Directory.Exists(path))
-                yield return (name, path);
+                yield return (name, path, null);
         }
     }
 
