@@ -38,6 +38,18 @@ Windows-утилита для проверки и обновления `nvngx_dl
 - `src/DlssChecker/Assets/Presets/3000.ini` — пресет для RTX 3000
 - `src/DlssChecker/Services/GitHubReleaseService.cs` — проверка обновлений приложения
 
+### Предупреждение Windows SmartScreen
+
+При первом запуске Windows может показать предупреждение **«Защитник Windows предотвратил запуск неизвестного приложения»**.
+
+Это происходит потому, что исполняемый файл не имеет платной цифровой подписи — стандартная ситуация для open source утилит.
+
+**Как запустить:**
+1. Нажмите **«Подробнее»**
+2. Нажмите **«Выполнить всё равно»**
+
+Приложение полностью открыто — исходники здесь, на GitHub. Если не доверяете бинарнику — соберите из исходников сами (см. раздел «Сборка»).
+
 ### Сборка
 
 ```powershell
@@ -85,6 +97,18 @@ Localization file: `src/DlssChecker/Resources/Localization.json`
 - `src/DlssChecker/Assets/Presets/4000_5000.ini` — RTX 4000/5000 preset
 - `src/DlssChecker/Assets/Presets/3000.ini` — RTX 3000 preset
 - `src/DlssChecker/Services/GitHubReleaseService.cs` — app update check
+
+### Windows SmartScreen warning
+
+On first launch Windows may show a **"Windows Defender prevented an unknown app from running"** warning.
+
+This happens because the executable is not signed with a paid code-signing certificate — a common situation for open source tools.
+
+**How to run:**
+1. Click **More info**
+2. Click **Run anyway**
+
+The app is fully open source — the code is right here on GitHub. If you don't trust the binary, build it yourself (see the Build section below).
 
 ### Build
 

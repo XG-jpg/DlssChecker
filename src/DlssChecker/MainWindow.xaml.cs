@@ -51,6 +51,7 @@ public partial class MainWindow : Window
         AppSelfUpdater.CleanupOldFiles();
         ApplyLocalization();
         ResetUiState();
+        TweaksStatusText.Visibility = Visibility.Collapsed;
 
         Loaded += OnLoaded;
     }
@@ -88,7 +89,7 @@ public partial class MainWindow : Window
         TweaksTitleText.Text = "DLSSTweaks";
         PresetLabelText.Text = T("preset");
         ApplyTweaksButton.Content = T("apply");
-        CheckTweaksLoadButton.Content = T("check_tweaks_load");
+        EnableOverrideButton.Content = T("enable_override");
         RemoveTweaksButton.Content = T("remove");
         CheckAppUpdatesButtonText.Text = T("check_app_updates");
         CheckAppUpdatesButton.ToolTip = T("check_app_updates_tooltip");
@@ -101,7 +102,7 @@ public partial class MainWindow : Window
         UpdateButton.Visibility = Visibility.Collapsed;
         RollbackButton.Visibility = Visibility.Collapsed;
         ApplyTweaksButton.Visibility = Visibility.Collapsed;
-        CheckTweaksLoadButton.Visibility = Visibility.Collapsed;
+        EnableOverrideButton.Visibility = Visibility.Collapsed;
         RemoveTweaksButton.Visibility = Visibility.Collapsed;
         UpdateStatusText.Text = string.Empty;
         UpdateStatusText.Visibility = Visibility.Collapsed;
@@ -360,7 +361,7 @@ public partial class MainWindow : Window
         });
     }
 
-    private void OnCheckTweaksLoad(object sender, RoutedEventArgs e)
+    private void OnEnableOverride(object sender, RoutedEventArgs e)
     {
         if (_isBusy)
         {
@@ -370,25 +371,6 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(_context.FolderPath) || !Directory.Exists(_context.FolderPath))
         {
             ShowWarning(T("select_folder_first"));
-            return;
-        }
-
-        if (!HasTweaksInstalled())
-        {
-            ShowWarning(T("tweaks_not_installed"));
-            return;
-        }
-
-        var logPath = Path.Combine(_context.FolderPath, "dlsstweaks.log");
-        if (File.Exists(logPath))
-        {
-            ShowInfo(TF("tweaks_log_found", logPath));
-            return;
-        }
-
-        if (_nvidiaOverride.IsEnabled())
-        {
-            ShowWarning(T("tweaks_log_missing_override_enabled"));
             return;
         }
 
@@ -405,6 +387,7 @@ public partial class MainWindow : Window
         }
 
         TryEnableNvidiaOverride();
+        UpdateButtonsState();
     }
 
     private void OnRemoveTweaks(object sender, RoutedEventArgs e)
@@ -594,8 +577,36 @@ public partial class MainWindow : Window
 
         RollbackButton.Visibility = _hasBackup ? Visibility.Visible : Visibility.Collapsed;
         ApplyTweaksButton.Visibility = hasGameFolder ? Visibility.Visible : Visibility.Collapsed;
-        CheckTweaksLoadButton.Visibility = tweaksInstalled ? Visibility.Visible : Visibility.Collapsed;
         RemoveTweaksButton.Visibility = tweaksInstalled ? Visibility.Visible : Visibility.Collapsed;
+
+        if (tweaksInstalled)
+        {
+            var logPath = Path.Combine(_context.FolderPath!, "dlsstweaks.log");
+            if (File.Exists(logPath))
+            {
+                TweaksStatusText.Text = T("tweaks_status_loaded");
+                TweaksStatusText.Foreground = new SolidColorBrush(Colors.LightGreen);
+                EnableOverrideButton.Visibility = Visibility.Collapsed;
+            }
+            else if (_nvidiaOverride.IsEnabled())
+            {
+                TweaksStatusText.Text = T("tweaks_status_not_loaded_override_on");
+                TweaksStatusText.Foreground = new SolidColorBrush(Colors.Gold);
+                EnableOverrideButton.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                TweaksStatusText.Text = T("tweaks_status_override_needed");
+                TweaksStatusText.Foreground = new SolidColorBrush(Colors.OrangeRed);
+                EnableOverrideButton.Visibility = Visibility.Visible;
+            }
+            TweaksStatusText.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            TweaksStatusText.Visibility = Visibility.Collapsed;
+            EnableOverrideButton.Visibility = Visibility.Collapsed;
+        }
         TweaksVersionText.Text = tweaksInstalled
             ? TF("installed_tweaks_version", TweaksVersion)
             : TF("built_in_tweaks_version", TweaksVersion);
