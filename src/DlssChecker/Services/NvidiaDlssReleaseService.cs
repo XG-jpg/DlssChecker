@@ -15,6 +15,11 @@ public sealed class NvidiaDlssReleaseService
     public async Task<NvidiaDlssRelease?> GetLatestAsync()
     {
         using var response = await HttpClient.GetAsync(ApiUrl);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+            response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            return null; // rate limited — caller falls back to local
+
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync();
@@ -68,7 +73,7 @@ public sealed class NvidiaDlssReleaseService
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("DlssChecker", "0.0.2"));
+            new ProductInfoHeaderValue("DlssChecker", "0.0.4"));
         client.DefaultRequestHeaders.Accept.Add(
             new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return client;

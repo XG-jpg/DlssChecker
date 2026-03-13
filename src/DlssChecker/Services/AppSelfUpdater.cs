@@ -22,21 +22,39 @@ public sealed class AppSelfUpdater
         }
     }
 
-    public async Task ApplyAsync(string downloadUrl)
+    public async Task ApplyAsync(string downloadUrl, IProgress<(string status, double? progress)>? progress = null)
     {
         var appDir = AppDomain.CurrentDomain.BaseDirectory;
         var currentExe = Environment.ProcessPath
             ?? Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("Could not resolve executable path.");
 
-        var zipBytes = await HttpClient.GetByteArrayAsync(downloadUrl);
+        progress?.Report(("Загрузка обновления…", 0));
+        using var response = await HttpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+        await using var contentStream = await response.Content.ReadAsStreamAsync();
+        using var ms = new MemoryStream(totalBytes > 0 ? (int)totalBytes : 8 * 1024 * 1024);
+        var buffer = new byte[81920];
+        long downloaded = 0;
+        int read;
+        while ((read = await contentStream.ReadAsync(buffer)) > 0)
+        {
+            await ms.WriteAsync(buffer.AsMemory(0, read));
+            downloaded += read;
+            if (totalBytes > 0)
+                progress?.Report(("Загрузка обновления…", (double)downloaded / totalBytes));
+        }
+        var zipBytes = ms.ToArray();
+        progress?.Report(("Установка обновления…", null));
 
         var tempDir = Path.Combine(Path.GetTempPath(), $"DlssCheckerUpd_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         try
         {
-            using (var ms = new MemoryStream(zipBytes))
-            using (var archive = new ZipArchive(ms, ZipArchiveMode.Read))
+            using (var zipMs = new MemoryStream(zipBytes))
+            using (var archive = new ZipArchive(zipMs, ZipArchiveMode.Read))
             {
                 archive.ExtractToDirectory(tempDir, overwriteFiles: true);
             }
@@ -95,7 +113,7 @@ public sealed class AppSelfUpdater
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("DlssChecker", "0.0.2"));
+            new ProductInfoHeaderValue("DlssChecker", "0.0.4"));
         return client;
     }
 }

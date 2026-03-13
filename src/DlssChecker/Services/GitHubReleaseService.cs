@@ -16,6 +16,11 @@ public sealed class GitHubReleaseService
     {
         var url = $"https://api.github.com/repos/{owner}/{repository}/releases/latest";
         using var response = await HttpClient.GetAsync(url);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+            response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            throw new InvalidOperationException("GitHub API rate limit exceeded. Please try again later.");
+
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync();
@@ -108,7 +113,7 @@ public sealed class GitHubReleaseService
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("DlssChecker", "0.0.2"));
+            new ProductInfoHeaderValue("DlssChecker", "0.0.4"));
         client.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return client;

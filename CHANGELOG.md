@@ -10,6 +10,12 @@
 - **предложение создать ярлык**: при первом запуске приложение предлагает создать ярлык на рабочем столе (показывается один раз)
 - **кнопка загрузки в README**: добавлена прямая ссылка на скачивание актуального `.exe` из последнего релиза
 - **тёмный заголовок окна**: системная полоса заголовка теперь тёмная, соответствует теме приложения
+- **прогресс обновления приложения**: при обновлении открывается отдельное окно с прогресс-баром — показывает загрузку (в %) и установку
+- **прогресс обновления DLSS**: бар под кнопкой «Обновить DLSS» теперь показывает реальный процент загрузки, а не бесконечное вращение
+- **цвет версии в игре**: текст «Версия в игре» становится оранжевым если DLSS устарел, зелёным если актуален
+- **запоминание последней папки**: при следующем запуске путь к игре восстанавливается автоматически
+- **тултип на кнопке «Обновить DLSS»**: показывает `«старая версия → новая версия»` при наведении
+- **GitHub rate limit**: ошибка 403 теперь отображается как понятное сообщение вместо технического текста
 
 ### EN
 
@@ -19,6 +25,12 @@
 - **desktop shortcut offer**: on first launch the app offers to create a desktop shortcut (shown once)
 - **download button in README**: added a direct download link to the latest release `.exe`
 - **dark title bar**: the system window title bar is now dark, matching the app theme
+- **app update progress window**: when updating the app a separate window opens with a progress bar — shows download percentage and installation stage
+- **DLSS update progress bar**: the bar under "Update DLSS" now shows real download percentage instead of an indeterminate spinner
+- **game version color**: "Game version" text turns orange when DLSS is outdated, green when up to date
+- **remember last folder**: the game folder path is restored automatically on next launch
+- **Update DLSS tooltip**: shows `«old version → new version»` on hover
+- **GitHub rate limit**: 403 error is now shown as a readable message instead of a technical exception
 
 ## v0.0.3
 

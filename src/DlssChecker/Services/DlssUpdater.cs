@@ -26,12 +26,29 @@ public sealed class DlssUpdater
         }
     }
 
-    public async Task<string> DownloadAsync(string url, string destinationPath, string? expectedSha256 = null)
+    public async Task<string> DownloadAsync(string url, string destinationPath, string? expectedSha256 = null,
+        IProgress<double>? progress = null)
     {
-        using var response = await _httpClient.GetAsync(url);
+        using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
-        var bytes = await response.Content.ReadAsByteArrayAsync();
 
+        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+        await using var contentStream = await response.Content.ReadAsStreamAsync();
+
+        using var ms = new MemoryStream(totalBytes > 0 ? (int)totalBytes : 4 * 1024 * 1024);
+        var buffer = new byte[81920];
+        long downloaded = 0;
+        int read;
+        while ((read = await contentStream.ReadAsync(buffer)) > 0)
+        {
+            await ms.WriteAsync(buffer.AsMemory(0, read));
+            downloaded += read;
+            if (totalBytes > 0)
+                progress?.Report((double)downloaded / totalBytes);
+        }
+        progress?.Report(1.0);
+
+        var bytes = ms.ToArray();
         var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
         var isZip = url.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || contentType.Contains("zip");
 

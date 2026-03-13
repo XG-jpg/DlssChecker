@@ -57,6 +57,10 @@ public partial class MainWindow : Window
         ResetUiState();
         TweaksStatusText.Visibility = Visibility.Collapsed;
 
+        var lastFolder = LoadLastFolder(baseDir);
+        if (!string.IsNullOrWhiteSpace(lastFolder))
+            GamePathBox.Text = lastFolder;
+
         Loaded += OnLoaded;
         SourceInitialized += (_, _) => EnableDarkTitleBar();
     }
@@ -306,6 +310,14 @@ public partial class MainWindow : Window
                     return;
                 }
 
+                var downloadProgress = new Progress<double>(p =>
+                {
+                    BusyBar.IsIndeterminate = false;
+                    BusyBar.Value = p * 100;
+                    BusyProgressText.Visibility = Visibility.Visible;
+                    BusyProgressText.Text = $"{(int)(p * 100)}%";
+                });
+
                 string tempPath;
                 try
                 {
@@ -314,7 +326,8 @@ public partial class MainWindow : Window
                     if (nvRelease == null)
                         throw new InvalidOperationException("No release found in NVIDIA/DLSS repository.");
 
-                    tempPath = await _updater.DownloadAsync(nvRelease.DownloadUrl, _context.DlssDllPath!, expectedSha256: null);
+                    tempPath = await _updater.DownloadAsync(nvRelease.DownloadUrl, _context.DlssDllPath!,
+                        expectedSha256: null, progress: downloadProgress);
                 }
                 catch
                 {
@@ -322,6 +335,8 @@ public partial class MainWindow : Window
                     if (!File.Exists(_bundledDlssZip))
                         throw;
 
+                    BusyProgressText.Visibility = Visibility.Collapsed;
+                    BusyBar.IsIndeterminate = true;
                     tempPath = await _updater.UseLocalAsync(_bundledDlssZip, _context.DlssDllPath!, _latest.Sha256);
                 }
 
@@ -596,62 +611,92 @@ public partial class MainWindow : Window
 
     private async void OnCheckAppUpdates(object sender, RoutedEventArgs e)
     {
-        if (_isBusy)
+        if (_isBusy || !CheckAppUpdatesButton.IsEnabled) return;
+
+        CheckAppUpdatesButton.IsEnabled = false;
+        try
         {
-            return;
+            var release = await _gitHubReleaseService.GetLatestReleaseAsync(RepositoryOwner, RepositoryName);
+            if (release == null || string.IsNullOrWhiteSpace(release.Version))
+            {
+                ShowWarning(T("no_release_info"));
+                return;
+            }
+
+            if (!Version.TryParse(AppVersion, out var currentVersion) ||
+                !Version.TryParse(release.Version, out var latestVersion))
+            {
+                ShowWarning(TF("app_update_parse_error", release.TagName));
+                return;
+            }
+
+            if (latestVersion <= currentVersion)
+            {
+                ShowInfo(TF("app_up_to_date", AppVersion));
+                return;
+            }
+
+            var result = MessageBox.Show(
+                this,
+                TF("app_update_available", AppVersion, release.Version),
+                T("app_name"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                if (!string.IsNullOrWhiteSpace(release.DownloadUrl))
+                {
+                    var progressWin = new UpdateProgressWindow { Owner = this };
+                    progressWin.Show();
+                    var prog = new Progress<(string status, double? value)>(t =>
+                    {
+                        if (t.value.HasValue)
+                            progressWin.SetProgress(t.value.Value);
+                        else
+                            progressWin.SetIndeterminate(t.status);
+                        progressWin.SetStatus(t.status);
+                    });
+                    await _appSelfUpdater.ApplyAsync(release.DownloadUrl, prog);
+                }
+                else
+                {
+                    var fallbackUrl = !string.IsNullOrWhiteSpace(release.HtmlUrl)
+                        ? release.HtmlUrl
+                        : RepositoryUrl + "/releases/latest";
+                    OpenUrl(fallbackUrl);
+                }
+            }
         }
-
-        await RunBusy(async () =>
+        catch (Exception ex)
         {
-            try
+            ShowError(TF("app_update_check_error", ex.Message));
+        }
+        finally
+        {
+            CheckAppUpdatesButton.IsEnabled = true;
+        }
+    }
+
+    private static string? LoadLastFolder(string baseDir)
+    {
+        try
+        {
+            var path = Path.Combine(baseDir, ".last_folder");
+            if (File.Exists(path))
             {
-                var release = await _gitHubReleaseService.GetLatestReleaseAsync(RepositoryOwner, RepositoryName);
-                if (release == null || string.IsNullOrWhiteSpace(release.Version))
-                {
-                    ShowWarning(T("no_release_info"));
-                    return;
-                }
-
-                if (!Version.TryParse(AppVersion, out var currentVersion) ||
-                    !Version.TryParse(release.Version, out var latestVersion))
-                {
-                    ShowWarning(TF("app_update_parse_error", release.TagName));
-                    return;
-                }
-
-                if (latestVersion <= currentVersion)
-                {
-                    ShowInfo(TF("app_up_to_date", AppVersion));
-                    return;
-                }
-
-                var result = MessageBox.Show(
-                    this,
-                    TF("app_update_available", AppVersion, release.Version),
-                    T("app_name"),
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Information);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    if (!string.IsNullOrWhiteSpace(release.DownloadUrl))
-                    {
-                        await _appSelfUpdater.ApplyAsync(release.DownloadUrl);
-                    }
-                    else
-                    {
-                        var fallbackUrl = !string.IsNullOrWhiteSpace(release.HtmlUrl)
-                            ? release.HtmlUrl
-                            : RepositoryUrl + "/releases/latest";
-                        OpenUrl(fallbackUrl);
-                    }
-                }
+                var folder = File.ReadAllText(path).Trim();
+                if (Directory.Exists(folder)) return folder;
             }
-            catch (Exception ex)
-            {
-                ShowError(TF("app_update_check_error", ex.Message));
-            }
-        });
+        }
+        catch { }
+        return null;
+    }
+
+    private static void SaveLastFolder(string baseDir, string folder)
+    {
+        try { File.WriteAllText(Path.Combine(baseDir, ".last_folder"), folder); }
+        catch { }
     }
 
     private void UpdateContextUi()
@@ -668,11 +713,24 @@ public partial class MainWindow : Window
         CurrentVersionText.Text = currentVersion ?? "-";
         LatestVersionText.Text = _latest?.LatestVersion ?? "-";
 
+        // Color current version based on comparison with latest
+        var versionColor = Colors.Gray;
+        if (currentVersion != null && _latest?.LatestVersion != null &&
+            Version.TryParse(currentVersion.Replace(',', '.'), out var cv) &&
+            Version.TryParse(_latest.LatestVersion.Replace(',', '.'), out var lv))
+        {
+            versionColor = cv < lv ? Colors.Orange : Colors.LightGreen;
+        }
+        CurrentVersionText.Foreground = new SolidColorBrush(versionColor);
+
         var supported = _context.DlssDllPath != null;
         DlssSupportText.Text = supported ? T("yes") : T("no");
         var color = supported ? Colors.LightGreen : Colors.OrangeRed;
         DlssSupportText.Foreground = new SolidColorBrush(color);
         SupportDot.Fill = new SolidColorBrush(color);
+
+        if (!string.IsNullOrWhiteSpace(_context.FolderPath))
+            SaveLastFolder(AppDomain.CurrentDomain.BaseDirectory, _context.FolderPath);
     }
 
     private static string FormatVersionForDisplay(string versionText)
@@ -706,6 +764,12 @@ public partial class MainWindow : Window
         }
 
         UpdateButton.Visibility = updateNeeded == true ? Visibility.Visible : Visibility.Collapsed;
+        if (updateNeeded == true)
+        {
+            var fromVer = FormatVersionForDisplay((_context.DetectedVersion?.FileVersion ?? "?").Replace(',', '.'));
+            var toVer = _latest?.LatestVersion ?? "?";
+            UpdateButton.ToolTip = $"{fromVer} → {toVer}";
+        }
         UpdateStatusText.Text = updateNeeded == false ? T("update_not_required") : string.Empty;
         UpdateStatusText.Visibility = updateNeeded == false ? Visibility.Visible : Visibility.Collapsed;
 
@@ -794,6 +858,13 @@ public partial class MainWindow : Window
     {
         _isBusy = busy;
         BusyBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        if (!busy)
+        {
+            BusyBar.IsIndeterminate = true;
+            BusyBar.Value = 0;
+            BusyProgressText.Visibility = Visibility.Collapsed;
+            BusyProgressText.Text = string.Empty;
+        }
     }
 
     private void ShowInfo(string message)
