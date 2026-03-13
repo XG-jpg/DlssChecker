@@ -35,14 +35,25 @@ public sealed class DlssScanner
 
     private static string? FindFirstDll(string folder)
     {
-        var files = Directory.EnumerateFiles(folder, "*.dll", SearchOption.AllDirectories);
-        foreach (var file in files)
+        try
         {
-            var name = Path.GetFileName(file).ToLowerInvariant();
-            if (KnownDllNames.Contains(name))
+            var files = Directory.EnumerateFiles(folder, "*.dll", SearchOption.AllDirectories);
+            foreach (var file in files)
             {
-                return file;
+                var name = Path.GetFileName(file).ToLowerInvariant();
+                if (KnownDllNames.Contains(name))
+                {
+                    return file;
+                }
             }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Some subfolders may be inaccessible — ignore and return null
+        }
+        catch (IOException)
+        {
+            // Detached drives or other I/O errors
         }
 
         return null;

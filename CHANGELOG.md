@@ -1,0 +1,53 @@
+# Changelog
+
+## v0.0.2
+
+### RU
+
+- **исправлено**: встроенные архивы `DLSS.zip` и `DLSSTweaks.zip` не попадали в папку при публикации — приложение просило выбрать файл вручную
+- **обновление приложения**: теперь скачивает и применяет обновление прямо на месте — перезаписывает файлы рядом с `.exe` и перезапускается автоматически, без ручного скачивания
+- **после обновления**: показывает окно с изменениями текущей версии
+- **источник DLSS**: теперь сначала скачивает актуальный `nvngx_dlss.dll` с официального репозитория `NVIDIA/DLSS` на GitHub, при неудаче — использует встроенный архив
+- **исправлено**: `OnRollback` падал с необработанным исключением если файл был заблокирован (игра запущена)
+- **исправлено**: сканирование папки теперь выполняется в фоне, не блокирует интерфейс
+- **исправлено**: `DlssScanner` падал с `UnauthorizedAccessException` при попытке обхода защищённых вложенных папок
+
+### EN
+
+- **fix**: bundled `DLSS.zip` and `DLSSTweaks.zip` were missing from the publish output — the app was asking the user to pick the file manually
+- **app auto-update**: now downloads and applies the update in-place — overwrites files next to the `.exe` and restarts automatically, no manual download needed
+- **post-update changelog**: shows a window with changes for the current version after an update
+- **DLSS source**: now attempts to download the latest `nvngx_dlss.dll` from the official `NVIDIA/DLSS` GitHub repository first, falls back to the bundled archive on failure
+- **fix**: `OnRollback` crashed with an unhandled exception if the DLL file was locked (game running)
+- **fix**: folder scan now runs in the background and no longer blocks the UI
+- **fix**: `DlssScanner` crashed with `UnauthorizedAccessException` when traversing protected subfolders
+
+## v0.0.1
+
+### RU
+
+- проверка `nvngx_dlss*.dll` в выбранной папке игры
+- отображение версии DLSS в игре и последней доступной версии
+- обновление DLSS из встроенного архива с созданием бэкапа
+- откат DLSS из созданного бэкапа
+- установка и удаление `DLSSTweaks`
+- готовые пресеты для RTX 4000/5000 и RTX 3000
+- проверка загрузки `DLSSTweaks` по `dlsstweaks.log`
+- предложение включить `NVIDIA signature override`, если это может потребоваться
+- кнопка GitHub в шапке приложения
+- проверка обновлений приложения через GitHub Releases
+- переход по прямой ссылке на скачивание asset-файла из latest release
+
+### EN
+
+- checks `nvngx_dlss*.dll` inside the selected game folder
+- shows the DLSS version used by the game and the latest available version
+- updates DLSS from the bundled archive and creates a backup
+- rolls DLSS back from the created backup
+- installs and removes `DLSSTweaks`
+- includes ready presets for RTX 4000/5000 and RTX 3000
+- verifies `DLSSTweaks` loading by checking `dlsstweaks.log`
+- offers to enable `NVIDIA signature override` when it may be needed
+- adds a GitHub button in the app header
+- checks for app updates through GitHub Releases
+- opens the direct asset download link from the latest release

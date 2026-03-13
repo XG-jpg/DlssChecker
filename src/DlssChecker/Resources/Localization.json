@@ -2,7 +2,7 @@
   "defaultLanguage": "en",
   "languages": {
     "ru": {
-      "window_title": "DLSS Checker v0.0.1",
+      "window_title": "DLSS Checker v0.0.2",
       "app_name": "DLSS Checker",
       "subtitle": "Проверка и обновление nvngx_dlss + DLSSTweaks",
       "select_game_folder": "Выберите папку игры",
@@ -31,7 +31,9 @@
       "local_update_error": "Ошибка локального обновления: {0}",
       "dll_not_found": "DLL не найден.",
       "backup_not_found": "Бэкап не найден.",
-      "rollback_completed": "Откат выполнен из {0}",
+      "rollback_completed": "Откат выполнен успешно.",
+      "rollback_error": "Не удалось откатить DLSS: {0}",
+      "scan_error": "Ошибка при сканировании папки: {0}",
       "tweaks_installed": "DLSSTweaks установлен.",
       "tweaks_install_error": "Ошибка установки DLSSTweaks: {0}",
       "tweaks_removed": "DLSSTweaks удален.",
@@ -53,11 +55,12 @@
       "no_release_info": "Не удалось получить информацию о последнем релизе.",
       "app_update_parse_error": "Не удалось определить версию релиза: {0}",
       "app_up_to_date": "У вас уже установлена последняя версия приложения: {0}",
-      "app_update_available": "Доступна новая версия приложения.\n\nТекущая: {0}\nНовая: {1}\n\nОткрыть страницу релиза?",
-      "app_update_check_error": "Ошибка проверки обновления приложения: {0}"
+      "app_update_available": "Доступна новая версия приложения.\n\nТекущая: {0}\nНовая: {1}\n\nОбновить сейчас? Приложение перезапустится автоматически.",
+      "app_update_check_error": "Ошибка проверки обновления приложения: {0}",
+      "app_update_apply_error": "Не удалось применить обновление: {0}"
     },
     "en": {
-      "window_title": "DLSS Checker v0.0.1",
+      "window_title": "DLSS Checker v0.0.2",
       "app_name": "DLSS Checker",
       "subtitle": "Check and update nvngx_dlss + DLSSTweaks",
       "select_game_folder": "Select game folder",
@@ -86,7 +89,9 @@
       "local_update_error": "Local update error: {0}",
       "dll_not_found": "DLL was not found.",
       "backup_not_found": "Backup was not found.",
-      "rollback_completed": "Rollback completed from {0}",
+      "rollback_completed": "Rollback completed successfully.",
+      "rollback_error": "Failed to rollback DLSS: {0}",
+      "scan_error": "Error scanning folder: {0}",
       "tweaks_installed": "DLSSTweaks installed.",
       "tweaks_install_error": "DLSSTweaks install error: {0}",
       "tweaks_removed": "DLSSTweaks removed.",
@@ -108,8 +113,9 @@
       "no_release_info": "Could not get information about the latest release.",
       "app_update_parse_error": "Could not parse release version: {0}",
       "app_up_to_date": "You already have the latest app version: {0}",
-      "app_update_available": "A new app version is available.\n\nCurrent: {0}\nNew: {1}\n\nOpen the release page?",
-      "app_update_check_error": "App update check error: {0}"
+      "app_update_available": "A new app version is available.\n\nCurrent: {0}\nNew: {1}\n\nUpdate now? The app will restart automatically.",
+      "app_update_check_error": "App update check error: {0}",
+      "app_update_apply_error": "Failed to apply update: {0}"
     }
   }
 }

@@ -14,7 +14,7 @@ namespace DlssChecker;
 
 public partial class MainWindow : Window
 {
-    private const string AppVersion = "0.0.1";
+    private const string AppVersion = "0.0.2";
     private const string TweaksVersion = "0.310.5.0";
     private const string RepositoryUrl = "https://github.com/XG-jpg/DllsChecker";
     private const string RepositoryOwner = "XG-jpg";
@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     private readonly TweaksInstaller _tweaks;
     private readonly NvidiaOverrideService _nvidiaOverride = new();
     private readonly GitHubReleaseService _gitHubReleaseService = new();
+    private readonly NvidiaDlssReleaseService _nvidiaDlssService = new();
+    private readonly AppSelfUpdater _appSelfUpdater = new();
     private readonly LocalizationService _loc;
     private readonly string _bundledDlssZip;
 
@@ -46,8 +48,27 @@ public partial class MainWindow : Window
         _tweaks = new TweaksInstaller(Path.Combine(baseDir, "Assets", "DLSSTweaks.zip"));
         _bundledDlssZip = Path.Combine(baseDir, "Assets", "DLSS.zip");
 
+        AppSelfUpdater.CleanupOldFiles();
         ApplyLocalization();
         ResetUiState();
+
+        Loaded += OnLoaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var flagPath = Path.Combine(baseDir, ".updated");
+        if (!File.Exists(flagPath))
+        {
+            return;
+        }
+
+        try { File.Delete(flagPath); } catch { /* ignore */ }
+
+        var changelogPath = Path.Combine(baseDir, "CHANGELOG.md");
+        var win = new ChangelogWindow(AppVersion, changelogPath) { Owner = this };
+        win.ShowDialog();
     }
 
     private void ApplyLocalization()
@@ -108,7 +129,17 @@ public partial class MainWindow : Window
 
     private async Task ScanAsync()
     {
-        _context = _scanner.Scan(GamePathBox.Text);
+        var path = GamePathBox.Text;
+        try
+        {
+            _context = await Task.Run(() => _scanner.Scan(path));
+        }
+        catch (Exception ex)
+        {
+            _context = new GameFolderContext { FolderPath = path };
+            ShowWarning(TF("scan_error", ex.Message));
+        }
+
         _latest = await _versionRepo.GetLatestAsync();
         _hasBackup = DetermineHasBackup();
 
@@ -129,29 +160,38 @@ public partial class MainWindow : Window
             return;
         }
 
-        _latest ??= await _versionRepo.GetLatestAsync();
-        if (_latest == null)
-        {
-            ShowWarning(T("dlss_info_unavailable"));
-            return;
-        }
-
         await RunBusy(async () =>
         {
             try
             {
-                string tempPath;
-                if (File.Exists(_bundledDlssZip))
+                _latest ??= await _versionRepo.GetLatestAsync();
+                if (_latest == null)
                 {
-                    tempPath = await _updater.UseLocalAsync(_bundledDlssZip, _context.DlssDllPath!, _latest.Sha256);
+                    ShowWarning(T("dlss_info_unavailable"));
+                    return;
                 }
-                else
+
+                string tempPath;
+                try
                 {
-                    tempPath = await _updater.DownloadAsync(_latest.DownloadUrl, _context.DlssDllPath!, _latest.Sha256);
+                    // 1. Try official NVIDIA/DLSS GitHub release (always newest)
+                    var nvRelease = await _nvidiaDlssService.GetLatestAsync();
+                    if (nvRelease == null)
+                        throw new InvalidOperationException("No release found in NVIDIA/DLSS repository.");
+
+                    tempPath = await _updater.DownloadAsync(nvRelease.DownloadUrl, _context.DlssDllPath!, expectedSha256: null);
+                }
+                catch
+                {
+                    // 2. Fall back to bundled DLSS.zip shipped with the app
+                    if (!File.Exists(_bundledDlssZip))
+                        throw;
+
+                    tempPath = await _updater.UseLocalAsync(_bundledDlssZip, _context.DlssDllPath!, _latest.Sha256);
                 }
 
                 _updater.ReplaceWithBackup(tempPath, _context.DlssDllPath!, _backup);
-                _context = _scanner.Scan(_context.FolderPath);
+                _context = await Task.Run(() => _scanner.Scan(_context.FolderPath));
                 _hasBackup = DetermineHasBackup();
 
                 UpdateContextUi();
@@ -256,7 +296,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        File.Copy(backupPath, _context.DlssDllPath, overwrite: true);
+        try
+        {
+            File.Copy(backupPath, _context.DlssDllPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            ShowError(TF("rollback_error", ex.Message));
+            return;
+        }
 
         try
         {
@@ -271,6 +319,7 @@ public partial class MainWindow : Window
         }
         catch
         {
+            // Cleanup failure is non-critical
         }
 
         _context = _scanner.Scan(_context.FolderPath);
@@ -278,7 +327,7 @@ public partial class MainWindow : Window
 
         UpdateContextUi();
         UpdateButtonsState();
-        ShowInfo(TF("rollback_completed", backupPath));
+        ShowInfo(T("rollback_completed"));
     }
 
     private async void OnApplyTweaks(object sender, RoutedEventArgs e)
@@ -468,7 +517,17 @@ public partial class MainWindow : Window
 
                 if (result == MessageBoxResult.Yes)
                 {
-                    OpenUrl(string.IsNullOrWhiteSpace(release.HtmlUrl) ? RepositoryUrl + "/releases/latest" : release.HtmlUrl);
+                    if (!string.IsNullOrWhiteSpace(release.DownloadUrl))
+                    {
+                        await _appSelfUpdater.ApplyAsync(release.DownloadUrl);
+                    }
+                    else
+                    {
+                        var fallbackUrl = !string.IsNullOrWhiteSpace(release.HtmlUrl)
+                            ? release.HtmlUrl
+                            : RepositoryUrl + "/releases/latest";
+                        OpenUrl(fallbackUrl);
+                    }
                 }
             }
             catch (Exception ex)
@@ -521,17 +580,17 @@ public partial class MainWindow : Window
         var hasGameFolder = !string.IsNullOrWhiteSpace(_context.FolderPath) && Directory.Exists(_context.FolderPath);
         var tweaksInstalled = hasGameFolder && HasTweaksInstalled();
 
-        var needsUpdate = false;
+        bool? updateNeeded = null;
         if (hasDll && hasLatest &&
             Version.TryParse(_latest!.LatestVersion.Replace(',', '.'), out var latestVersion) &&
-            Version.TryParse((CurrentVersionText.Text ?? string.Empty).Replace(',', '.'), out var currentVersion))
+            Version.TryParse((_context.DetectedVersion?.FileVersion ?? string.Empty).Replace(',', '.'), out var currentVersion))
         {
-            needsUpdate = currentVersion < latestVersion;
+            updateNeeded = currentVersion < latestVersion;
         }
 
-        UpdateButton.Visibility = hasDll && hasLatest && needsUpdate ? Visibility.Visible : Visibility.Collapsed;
-        UpdateStatusText.Text = hasDll && hasLatest && !needsUpdate ? T("update_not_required") : string.Empty;
-        UpdateStatusText.Visibility = string.IsNullOrEmpty(UpdateStatusText.Text) ? Visibility.Collapsed : Visibility.Visible;
+        UpdateButton.Visibility = updateNeeded == true ? Visibility.Visible : Visibility.Collapsed;
+        UpdateStatusText.Text = updateNeeded == false ? T("update_not_required") : string.Empty;
+        UpdateStatusText.Visibility = updateNeeded == false ? Visibility.Visible : Visibility.Collapsed;
 
         RollbackButton.Visibility = _hasBackup ? Visibility.Visible : Visibility.Collapsed;
         ApplyTweaksButton.Visibility = hasGameFolder ? Visibility.Visible : Visibility.Collapsed;
@@ -564,7 +623,7 @@ public partial class MainWindow : Window
 
     private bool DetermineHasBackup()
     {
-        if (string.IsNullOrWhiteSpace(_context.FolderPath))
+        if (string.IsNullOrWhiteSpace(_context.FolderPath) || !Directory.Exists(_context.FolderPath))
         {
             return false;
         }
