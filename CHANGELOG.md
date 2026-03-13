@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.0.3
+
+### RU
+
+- **автообнаружение игр**: при запуске приложение сканирует Steam, Epic Games и GOG — найденные игры с DLSS отображаются плитками с иконками прямо в интерфейсе; клик на плитку автоматически подставляет путь и запускает сканирование
+- **статус DLSSTweaks**: кнопка «Проверить загрузку» заменена на автоматический цветной индикатор — зелёный (загружен), жёлтый (запустите игру для проверки), красный (нужен NVIDIA Override); кнопка «Включить Override» появляется только когда требуется
+- **иконка приложения**: добавлена кастомная иконка с чипом GPU
+- **исправлено**: окно теперь фиксированной ширины, ручное изменение размера отключено
+- **исправлено**: дублирование игр в списке при нескольких библиотеках Steam
+- **SmartScreen**: в README добавлен раздел с объяснением предупреждения Windows и инструкцией как запустить
+
+### EN
+
+- **game auto-detection**: on startup the app scans Steam, Epic Games, and GOG — games with DLSS are shown as tiles with icons directly in the UI; clicking a tile fills in the path and triggers a scan automatically
+- **DLSSTweaks status**: the "Check load" button is replaced by an automatic colored indicator — green (loaded), yellow (launch the game to verify), red (NVIDIA Override required); the "Enable Override" button only appears when needed
+- **app icon**: added a custom GPU chip icon
+- **fix**: window is now fixed-width, manual resizing disabled
+- **fix**: duplicate game entries when Steam has multiple library folders
+- **SmartScreen**: added a README section explaining the Windows warning and how to run the app
+
 ## v0.0.2
 
 ### RU

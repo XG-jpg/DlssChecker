@@ -2,7 +2,7 @@
   "defaultLanguage": "en",
   "languages": {
     "ru": {
-      "window_title": "DLSS Checker v0.0.2",
+      "window_title": "DLSS Checker v0.0.3",
       "app_name": "DLSS Checker",
       "subtitle": "Проверка и обновление nvngx_dlss + DLSSTweaks",
       "select_game_folder": "Выберите папку игры",
@@ -64,7 +64,7 @@
       "app_update_apply_error": "Не удалось применить обновление: {0}"
     },
     "en": {
-      "window_title": "DLSS Checker v0.0.2",
+      "window_title": "DLSS Checker v0.0.3",
       "app_name": "DLSS Checker",
       "subtitle": "Check and update nvngx_dlss + DLSSTweaks",
       "select_game_folder": "Select game folder",

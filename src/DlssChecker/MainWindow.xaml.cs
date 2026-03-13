@@ -15,7 +15,7 @@ namespace DlssChecker;
 
 public partial class MainWindow : Window
 {
-    private const string AppVersion = "0.0.2";
+    private const string AppVersion = "0.0.3";
     private const string TweaksVersion = "0.310.5.0";
     private const string RepositoryUrl = "https://github.com/XG-jpg/DllsChecker";
     private const string RepositoryOwner = "XG-jpg";
