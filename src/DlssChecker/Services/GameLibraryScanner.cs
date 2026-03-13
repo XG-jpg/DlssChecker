@@ -34,7 +34,11 @@ public sealed class GameLibraryScanner
             });
         }
 
-        return results.OrderBy(g => g.Name).ToList();
+        return results
+            .GroupBy(g => g.FolderPath, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .OrderBy(g => g.Name)
+            .ToList();
     }
 
     private IEnumerable<(string name, string path)> EnumerateGameFolders()
