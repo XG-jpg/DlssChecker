@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Input;
 using System.Windows.Media;
 using MessageBox = System.Windows.MessageBox;
 using DlssChecker.Models;
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
     private readonly GitHubReleaseService _gitHubReleaseService = new();
     private readonly NvidiaDlssReleaseService _nvidiaDlssService = new();
     private readonly AppSelfUpdater _appSelfUpdater = new();
+    private readonly GameLibraryScanner _gameLibraryScanner = new();
     private readonly LocalizationService _loc;
     private readonly string _bundledDlssZip;
 
@@ -56,20 +58,39 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
         var flagPath = Path.Combine(baseDir, ".updated");
-        if (!File.Exists(flagPath))
+        if (File.Exists(flagPath))
         {
+            try { File.Delete(flagPath); } catch { /* ignore */ }
+            var changelogPath = Path.Combine(baseDir, "CHANGELOG.md");
+            var win = new ChangelogWindow(AppVersion, changelogPath) { Owner = this };
+            win.ShowDialog();
+        }
+
+        await ScanGameLibrariesAsync();
+    }
+
+    private async Task ScanGameLibrariesAsync()
+    {
+        DetectedGamesTitleText.Text = T("detected_games_scanning");
+        GameScanBar.Visibility = Visibility.Visible;
+        GamesPanelBorder.Visibility = Visibility.Visible;
+
+        var games = await Task.Run(() => _gameLibraryScanner.Scan());
+
+        GameScanBar.Visibility = Visibility.Collapsed;
+
+        if (games.Count == 0)
+        {
+            GamesPanelBorder.Visibility = Visibility.Collapsed;
             return;
         }
 
-        try { File.Delete(flagPath); } catch { /* ignore */ }
-
-        var changelogPath = Path.Combine(baseDir, "CHANGELOG.md");
-        var win = new ChangelogWindow(AppVersion, changelogPath) { Owner = this };
-        win.ShowDialog();
+        DetectedGamesTitleText.Text = T("detected_games");
+        GameTilesList.ItemsSource = games;
     }
 
     private void ApplyLocalization()
@@ -112,6 +133,15 @@ public partial class MainWindow : Window
     private string T(string key) => _loc.Get(key);
 
     private string TF(string key, params object[] args) => _loc.Format(key, args);
+
+    private async void OnGameTileClick(object sender, MouseButtonEventArgs e)
+    {
+        if (_isBusy) return;
+        if (sender is not FrameworkElement { DataContext: GameEntry entry }) return;
+
+        GamePathBox.Text = entry.FolderPath;
+        await RunBusy(ScanAsync);
+    }
 
     private async void OnBrowse(object sender, RoutedEventArgs e)
     {
