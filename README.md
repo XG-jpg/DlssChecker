@@ -1,7 +1,7 @@
 # DLSS Checker
 
 [![Stars](https://img.shields.io/github/stars/XG-jpg/DllsChecker?style=for-the-badge)](https://github.com/XG-jpg/DllsChecker/stargazers)
-[![Last Commit](https://img.shields.io/github/last-commit/XG-jpg/DllsChecker?style=for-the-badge)](https://github.com/XG-jpg/DllsChecker/commits/main)
+[![Last Commit](https://img.shields.io/github/last-commit/XG-jpg/DlssChecker?style=for-the-badge)](https://github.com/XG-jpg/DllsChecker/commits/main)
 [![Windows](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](#)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?style=for-the-badge)](#)
 
