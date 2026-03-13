@@ -9,6 +9,7 @@
     <RootNamespace>DlssChecker</RootNamespace>
     <AssemblyName>DlssChecker</AssemblyName>
     <Version>0.0.2</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
