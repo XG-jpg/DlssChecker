@@ -1,6 +1,7 @@
 .appdata/
 .dotnet/
 .nuget/
+.claude/
 artifacts/
 
 **/bin/
