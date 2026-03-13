@@ -4,9 +4,7 @@
         Title="DLSS Checker v0.0.2"
         SizeToContent="Height"
         Width="900"
-        MinHeight="520"
-        MinWidth="900"
-        ResizeMode="CanResize"
+        ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBackground}"
         Foreground="{StaticResource TextPrimaryBrush}">
