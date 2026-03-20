@@ -1,9 +1,10 @@
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
-using System.IO.Compression;
 
 namespace DlssChecker.Services;
 
@@ -27,7 +28,7 @@ public sealed class DlssUpdater
     }
 
     public async Task<string> DownloadAsync(string url, string destinationPath, string? expectedSha256 = null,
-        IProgress<double>? progress = null)
+        IProgress<AppUpdateProgress>? progress = null)
     {
         using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
@@ -38,15 +39,34 @@ public sealed class DlssUpdater
         using var ms = new MemoryStream(totalBytes > 0 ? (int)totalBytes : 4 * 1024 * 1024);
         var buffer = new byte[81920];
         long downloaded = 0;
+        var sw = Stopwatch.StartNew();
+        long lastSpeedBytes = 0;
+        double lastSpeedTime = 0;
+        double currentSpeedMBps = 0;
+
         int read;
         while ((read = await contentStream.ReadAsync(buffer)) > 0)
         {
             await ms.WriteAsync(buffer.AsMemory(0, read));
             downloaded += read;
+
+            var elapsed = sw.Elapsed.TotalSeconds;
+            if (elapsed - lastSpeedTime >= 0.5)
+            {
+                currentSpeedMBps = (downloaded - lastSpeedBytes) / (elapsed - lastSpeedTime) / 1_048_576.0;
+                lastSpeedBytes = downloaded;
+                lastSpeedTime = elapsed;
+            }
+
             if (totalBytes > 0)
-                progress?.Report((double)downloaded / totalBytes);
+                progress?.Report(new AppUpdateProgress(
+                    "Загрузка DLSS…",
+                    (double)downloaded / totalBytes,
+                    downloaded,
+                    totalBytes,
+                    currentSpeedMBps));
         }
-        progress?.Report(1.0);
+        progress?.Report(new AppUpdateProgress("Установка DLSS…"));
 
         var bytes = ms.ToArray();
         var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
@@ -90,18 +110,11 @@ public sealed class DlssUpdater
         }
     }
 
-    public void ReplaceWithBackup(string sourceTempPath, string targetPath, BackupService backup)
+    public void Replace(string sourceTempPath, string targetPath)
     {
-        if (File.Exists(targetPath))
-        {
-            backup.CreateBackup(targetPath);
-        }
-
         var targetDir = Path.GetDirectoryName(targetPath);
         if (!string.IsNullOrWhiteSpace(targetDir))
-        {
             Directory.CreateDirectory(targetDir);
-        }
 
         File.Copy(sourceTempPath, targetPath, overwrite: true);
         File.Delete(sourceTempPath);

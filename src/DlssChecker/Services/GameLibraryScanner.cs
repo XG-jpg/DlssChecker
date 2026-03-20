@@ -20,12 +20,12 @@ public sealed class GameLibraryScanner
     {
         var results = new List<GameEntry>();
 
-        foreach (var (name, path, iconPath) in EnumerateGameFolders())
+        foreach (var (name, path, iconPath, steamAppId) in EnumerateGameFolders())
         {
             var dlssPath = FindDlss(path);
             if (dlssPath == null) continue;
 
-            var icon = iconPath != null ? TryLoadImageFile(iconPath) : null;
+            var icon = iconPath != null ? LoadImageFromFile(iconPath) : null;
             icon ??= TryGetExeIcon(path);
 
             results.Add(new GameEntry
@@ -33,6 +33,7 @@ public sealed class GameLibraryScanner
                 Name = name,
                 FolderPath = path,
                 DlssVersion = TryGetVersion(dlssPath),
+                SteamAppId = steamAppId,
                 Icon = icon
             });
         }
@@ -44,7 +45,27 @@ public sealed class GameLibraryScanner
             .ToList();
     }
 
-    private IEnumerable<(string name, string path, string? iconPath)> EnumerateGameFolders()
+    /// <summary>Creates a GameEntry for a manually added folder. Returns null if no DLSS DLL found.</summary>
+    public GameEntry? CreateEntryForFolder(string path)
+    {
+        if (!Directory.Exists(path)) return null;
+
+        var dlssPath = FindDlss(path);
+        if (dlssPath == null) return null;
+
+        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var icon = TryGetExeIcon(path);
+
+        return new GameEntry
+        {
+            Name = name,
+            FolderPath = path,
+            DlssVersion = TryGetVersion(dlssPath),
+            Icon = icon
+        };
+    }
+
+    private IEnumerable<(string name, string path, string? iconPath, string? steamAppId)> EnumerateGameFolders()
     {
         return GetSteamGameFolders()
             .Concat(GetEpicGameFolders())
@@ -82,7 +103,7 @@ public sealed class GameLibraryScanner
         }
     }
 
-    private static ImageSource? TryLoadImageFile(string filePath)
+    public static ImageSource? LoadImageFromFile(string filePath)
     {
         try
         {
@@ -92,6 +113,26 @@ public sealed class GameLibraryScanner
             img.BeginInit();
             img.CacheOption = BitmapCacheOption.OnLoad;
             img.UriSource = new Uri(filePath, UriKind.Absolute);
+            img.DecodePixelWidth = 64;
+            img.EndInit();
+            img.Freeze();
+            return img;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static ImageSource? LoadImageFromBytes(byte[] bytes)
+    {
+        try
+        {
+            using var ms = new MemoryStream(bytes);
+            var img = new BitmapImage();
+            img.BeginInit();
+            img.CacheOption = BitmapCacheOption.OnLoad;
+            img.StreamSource = ms;
             img.DecodePixelWidth = 64;
             img.EndInit();
             img.Freeze();
@@ -144,7 +185,7 @@ public sealed class GameLibraryScanner
 
     // ── Steam ─────────────────────────────────────────────────────────────
 
-    private static IEnumerable<(string name, string path, string? iconPath)> GetSteamGameFolders()
+    private static IEnumerable<(string name, string path, string? iconPath, string? steamAppId)> GetSteamGameFolders()
     {
         var steamPath =
             Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath", null) as string
@@ -185,7 +226,7 @@ public sealed class GameLibraryScanner
                 if (!Directory.Exists(gamePath)) continue;
                 if (!seen.Add(gamePath)) continue;
 
-                // Try icon: _icon.jpg → _library_600x900.jpg → _header.jpg
+                // Try local icon cache: _icon.jpg → _library_600x900.jpg → _header.jpg
                 string? iconPath = null;
                 if (appId != null && Directory.Exists(iconCacheDir))
                 {
@@ -195,7 +236,7 @@ public sealed class GameLibraryScanner
                         ?? TryIconPath(iconCacheDir, appId, "_header.jpg");
                 }
 
-                yield return (name, gamePath, iconPath);
+                yield return (name, gamePath, iconPath, appId);
             }
         }
     }
@@ -243,7 +284,7 @@ public sealed class GameLibraryScanner
 
     // ── Epic Games ────────────────────────────────────────────────────────
 
-    private static IEnumerable<(string name, string path, string? iconPath)> GetEpicGameFolders()
+    private static IEnumerable<(string name, string path, string? iconPath, string? steamAppId)> GetEpicGameFolders()
     {
         var manifestDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
@@ -253,7 +294,7 @@ public sealed class GameLibraryScanner
 
         foreach (var item in TryEnumerateFiles(manifestDir, "*.item"))
         {
-            (string name, string path, string? iconPath)? entry = null;
+            (string name, string path, string? iconPath, string? steamAppId)? entry = null;
             try
             {
                 using var doc = JsonDocument.Parse(File.ReadAllText(item));
@@ -261,7 +302,7 @@ public sealed class GameLibraryScanner
                 var location = root.TryGetProperty("InstallLocation", out var loc) ? loc.GetString() : null;
                 var display = root.TryGetProperty("DisplayName", out var dn) ? dn.GetString() : null;
                 if (location != null && display != null && Directory.Exists(location))
-                    entry = (display, location, null);
+                    entry = (display, location, null, null);
             }
             catch { }
 
@@ -271,7 +312,7 @@ public sealed class GameLibraryScanner
 
     // ── GOG Galaxy ────────────────────────────────────────────────────────
 
-    private static IEnumerable<(string name, string path, string? iconPath)> GetGogGameFolders()
+    private static IEnumerable<(string name, string path, string? iconPath, string? steamAppId)> GetGogGameFolders()
     {
         var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\GOG.com\Games")
                ?? Registry.LocalMachine.OpenSubKey(@"SOFTWARE\GOG.com\Games");
@@ -285,17 +326,11 @@ public sealed class GameLibraryScanner
             var path = sub.GetValue("path") as string;
             var name = sub.GetValue("gameName") as string;
             if (path != null && name != null && Directory.Exists(path))
-                yield return (name, path, null);
+                yield return (name, path, null, null);
         }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
-
-    private static IEnumerable<string> TryEnumerateDirs(string path)
-    {
-        try { return Directory.EnumerateDirectories(path); }
-        catch { return []; }
-    }
 
     private static IEnumerable<string> TryEnumerateFiles(string path, string pattern)
     {

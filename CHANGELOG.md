@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.0.0
+
+### RU
+
+- **автообновление при запуске**: приложение теперь проверяет обновления до открытия главного окна — если есть новая версия, сразу показывается окно загрузки в стиле Steam с прогресс-баром, скоростью (МБ/с) и строкой `v0.0.x → v1.0.0`; после установки приложение перезапускается автоматически
+- **выбор версии DLSS**: кнопка «Откатить» заменена на «Выбор версии» — открывается окно со списком всех доступных версий из репозитория `NVIDIA/DLSS` с датами, бейджами «Актуальная» и «Установлена»; можно выбрать любую версию или указать локальный файл
+- **кэш списка версий**: список версий DLSS сохраняется локально и обновляется раз в час — окно открывается мгновенно без запроса к GitHub, при rate limit используются кэшированные данные
+- **прогресс обновления DLSS в отдельном окне**: при обновлении DLSS теперь открывается то же окно что и при обновлении приложения — показывает `v3.7.x → v3.8.x`, МБ/МБ и скорость
+- **иконки игр из Steam CDN**: если локальный кэш Steam не содержит обложку — иконка автоматически скачивается с `cdn.akamai.steamstatic.com` и сохраняется в `icon_cache/`; при следующем запуске грузится из файла без сети
+- **кастомные папки**: папки, открытые через «Обзор», теперь сохраняются в `custom_folders.json` и отображаются в списке игр при каждом запуске; папки которых больше нет на диске удаляются автоматически
+- **выбор тайла при обзоре**: после ручного выбора папки через «Обзор» соответствующая карточка в списке игр автоматически выделяется
+- **точка обновления**: после обновления DLSS точка на карточке игры сразу меняется с оранжевой на зелёную без перезапуска
+- **единая версия**: номер версии хранится только в `.csproj` — все части приложения читают его из сборки автоматически
+- **бэкапы убраны**: бэкап DLL при обновлении больше не создаётся
+
+### EN
+
+- **auto-update on launch**: the app now checks for updates before the main window opens — if a new version is available a Steam-style download window appears immediately with a progress bar, speed (MB/s) and `v0.0.x → v1.0.0` label; the app restarts automatically after installation
+- **DLSS version picker**: the "Rollback" button is replaced by "Select version" — a window opens with a full list of available versions from the `NVIDIA/DLSS` repository with dates and "Latest" / "Installed" badges; any version can be selected or a local file can be used
+- **version list cache**: the DLSS version list is saved locally and refreshed once per hour — the window opens instantly without a GitHub request; stale cache is used when rate-limited
+- **DLSS update progress window**: updating DLSS now opens the same window as the app updater — shows `v3.7.x → v3.8.x`, MB/MB and download speed
+- **game icons from Steam CDN**: if the local Steam cache has no cover art the icon is downloaded from `cdn.akamai.steamstatic.com` and stored in `icon_cache/`; on next launch it loads from disk without network
+- **custom folders**: folders opened via "Browse" are now saved to `custom_folders.json` and appear in the game list on every launch; folders that no longer exist on disk are removed automatically
+- **tile selection on browse**: after manually selecting a folder via "Browse" the matching game card is automatically highlighted
+- **update dot fix**: after updating DLSS the tile dot immediately changes from orange to green without restarting
+- **single version source**: the version number lives only in `.csproj` — all parts of the app read it from the assembly at runtime
+- **backups removed**: no backup of the DLL is created when updating DLSS
+
 ## v0.0.4
 
 ### RU

@@ -1,30 +1,61 @@
 <Window x:Class="DlssChecker.UpdateProgressWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="DLSS Checker — Update"
-        Width="420"
+        Title="DLSS Checker"
+        Width="480"
         SizeToContent="Height"
         ResizeMode="NoResize"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBackground}"
         Foreground="{StaticResource TextPrimaryBrush}">
-    <StackPanel Margin="24,20,24,24">
+    <Grid Margin="28,24,28,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="20"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- App title -->
+        <TextBlock Grid.Row="0"
+                   Text="DLSS Checker"
+                   FontSize="18"
+                   FontWeight="Bold"
+                   Foreground="{StaticResource TextPrimaryBrush}"/>
+
+        <!-- Version line: v0.0.4 → v0.0.5 -->
+        <TextBlock x:Name="VersionText"
+                   Grid.Row="1"
+                   FontSize="12"
+                   Foreground="{StaticResource TextMutedBrush}"
+                   Margin="0,3,0,0"/>
+
+        <!-- Status -->
         <TextBlock x:Name="StatusText"
-                   FontSize="14"
+                   Grid.Row="3"
+                   FontSize="13"
                    FontWeight="SemiBold"
                    Foreground="{StaticResource TextPrimaryBrush}"
-                   Margin="0,0,0,12"
-                   TextWrapping="Wrap"/>
+                   Margin="0,0,0,10"/>
+
+        <!-- Progress bar -->
         <ProgressBar x:Name="ProgressBar"
-                     Height="12"
+                     Grid.Row="5"
+                     Height="8"
                      Minimum="0"
                      Maximum="100"
                      Value="0"
                      IsIndeterminate="False"/>
-        <TextBlock x:Name="PercentText"
-                   FontSize="12"
+
+        <!-- Details: downloaded / total · speed -->
+        <TextBlock x:Name="DetailsText"
+                   Grid.Row="6"
+                   FontSize="11"
                    Foreground="{StaticResource TextMutedBrush}"
                    HorizontalAlignment="Right"
                    Margin="0,6,0,0"/>
-    </StackPanel>
+    </Grid>
 </Window>

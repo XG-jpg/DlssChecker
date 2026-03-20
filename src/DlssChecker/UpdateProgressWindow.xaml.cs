@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using DlssChecker.Services;
 
 namespace DlssChecker;
 
@@ -21,19 +22,29 @@ public partial class UpdateProgressWindow : Window
         };
     }
 
-    public void SetStatus(string text) => StatusText.Text = text;
-
-    public void SetProgress(double value)
+    public void SetVersionLine(string fromVersion, string toVersion)
     {
-        ProgressBar.IsIndeterminate = false;
-        ProgressBar.Value = value * 100;
-        PercentText.Text = $"{(int)(value * 100)}%";
+        VersionText.Text = $"v{fromVersion}  →  v{toVersion}";
     }
 
-    public void SetIndeterminate(string text)
+    public void Report(AppUpdateProgress p)
     {
-        StatusText.Text = text;
-        ProgressBar.IsIndeterminate = true;
-        PercentText.Text = string.Empty;
+        StatusText.Text = p.Status;
+
+        if (p.Fraction.HasValue)
+        {
+            ProgressBar.IsIndeterminate = false;
+            ProgressBar.Value = p.Fraction.Value * 100;
+
+            var dlMB = p.DownloadedBytes / 1_048_576.0;
+            var totalMB = p.TotalBytes / 1_048_576.0;
+            var speedStr = p.SpeedMBps > 0 ? $"  ·  {p.SpeedMBps:F1} МБ/с" : string.Empty;
+            DetailsText.Text = $"{dlMB:F1} МБ / {totalMB:F1} МБ{speedStr}";
+        }
+        else
+        {
+            ProgressBar.IsIndeterminate = true;
+            DetailsText.Text = string.Empty;
+        }
     }
 }

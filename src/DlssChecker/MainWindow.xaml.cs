@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net.Http;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -17,7 +19,7 @@ namespace DlssChecker;
 
 public partial class MainWindow : Window
 {
-    private const string AppVersion = "0.0.5";
+    private static string AppVersion => AppInfo.Version;
     private const string TweaksVersion = "0.310.5.0";
     private const string RepositoryUrl = "https://github.com/XG-jpg/DllsChecker";
     private const string RepositoryOwner = "XG-jpg";
@@ -26,7 +28,6 @@ public partial class MainWindow : Window
     private readonly DlssScanner _scanner = new();
     private readonly IVersionRepository _versionRepo;
     private readonly DlssUpdater _updater = new();
-    private readonly BackupService _backup;
     private readonly TweaksInstaller _tweaks;
     private readonly NvidiaOverrideService _nvidiaOverride = new();
     private readonly GitHubReleaseService _gitHubReleaseService = new();
@@ -34,12 +35,12 @@ public partial class MainWindow : Window
     private readonly AppSelfUpdater _appSelfUpdater = new();
     private readonly GameLibraryScanner _gameLibraryScanner = new();
     private readonly LocalizationService _loc;
+    private readonly CustomFoldersService _customFolders;
     private readonly string _bundledDlssZip;
 
     private GameFolderContext _context = new();
     private DlssVersionInfo? _latest;
     private bool _isBusy;
-    private bool _hasBackup;
 
     public MainWindow()
     {
@@ -48,9 +49,9 @@ public partial class MainWindow : Window
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
         _loc = LocalizationService.Load(Path.Combine(baseDir, "Resources", "Localization.json"));
         _versionRepo = new LocalVersionRepository(Path.Combine(baseDir, "Resources", "VersionInfo.json"));
-        _backup = new BackupService(Path.Combine(baseDir, "Backups"));
         _tweaks = new TweaksInstaller(Path.Combine(baseDir, "Assets", "DLSSTweaks.zip"));
         _bundledDlssZip = Path.Combine(baseDir, "Assets", "DLSS.zip");
+        _customFolders = new CustomFoldersService(baseDir);
 
         AppSelfUpdater.CleanupOldFiles();
         ApplyLocalization();
@@ -151,6 +152,17 @@ public partial class MainWindow : Window
             return (g, rel);
         });
 
+        // Merge in custom (manually browsed) folders, deduplicating by path
+        var customPaths = _customFolders.Load();
+        var knownPaths = games.Select(g => g.FolderPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in customPaths)
+        {
+            if (knownPaths.Contains(folder)) continue;
+            var entry = _gameLibraryScanner.CreateEntryForFolder(folder);
+            if (entry != null) games.Add(entry);
+        }
+        games = games.OrderBy(g => g.Name).ToList();
+
         GameScanBar.Visibility = Visibility.Collapsed;
 
         if (games.Count == 0)
@@ -159,31 +171,26 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Enrich NeedsUpdate directly on the mutable property
         if (latestRelease?.Version != null && Version.TryParse(latestRelease.Version, out var latestVer))
         {
-            var updatedGames = games.Select(g =>
+            foreach (var g in games)
             {
                 if (g.DlssVersion != null && Version.TryParse(g.DlssVersion, out var gameVer))
-                {
-                    return new GameEntry
-                    {
-                        Name = g.Name, FolderPath = g.FolderPath,
-                        DlssVersion = g.DlssVersion, Icon = g.Icon,
-                        NeedsUpdate = gameVer < latestVer
-                    };
-                }
-                return g;
-            }).ToList();
-            games = updatedGames;
+                    g.NeedsUpdate = gameVer < latestVer;
+            }
         }
 
         DetectedGamesTitleText.Text = T("detected_games");
         GameTilesList.ItemsSource = games;
+
+        // Load missing Steam icons in the background (CDN with local cache)
+        _ = LoadMissingSteamIconsAsync(games);
     }
 
     private void ApplyLocalization()
     {
-        Title = T("window_title");
+        Title = $"{T("window_title")} v{AppVersion}";
         HeaderTitleText.Text = T("app_name");
         HeaderVersionText.Text = $"v{AppVersion}";
         SubtitleText.Text = T("subtitle");
@@ -194,7 +201,7 @@ public partial class MainWindow : Window
         GameVersionLabelText.Text = T("version_in_game");
         LatestVersionLabelText.Text = T("latest_version");
         UpdateButton.Content = T("update_dlss");
-        RollbackButton.Content = T("rollback_dlss");
+        VersionButton.Content = T("select_version_dlss");
         TweaksTitleText.Text = "DLSSTweaks";
         PresetLabelText.Text = T("preset");
         ApplyTweaksButton.Content = T("apply");
@@ -209,7 +216,7 @@ public partial class MainWindow : Window
     private void ResetUiState()
     {
         UpdateButton.Visibility = Visibility.Collapsed;
-        RollbackButton.Visibility = Visibility.Collapsed;
+        VersionButton.Visibility = Visibility.Collapsed;
         ApplyTweaksButton.Visibility = Visibility.Collapsed;
         EnableOverrideButton.Visibility = Visibility.Collapsed;
         RemoveTweaksButton.Visibility = Visibility.Collapsed;
@@ -250,7 +257,43 @@ public partial class MainWindow : Window
             ClearTileSelection();
             GamePathBox.Text = dialog.SelectedPath;
             await RunBusy(ScanAsync);
+
+            // Persist folder, add to tiles and select the card
+            _customFolders.Add(dialog.SelectedPath);
+            AddCustomFolderToTiles(dialog.SelectedPath);
+            SelectTileByPath(dialog.SelectedPath);
         }
+    }
+
+    private void SelectTileByPath(string folderPath)
+    {
+        if (GameTilesList.ItemsSource is not List<GameEntry> games) return;
+        var entry = games.FirstOrDefault(g =>
+            string.Equals(g.FolderPath, folderPath, StringComparison.OrdinalIgnoreCase));
+        if (entry == null) return;
+        ClearTileSelection();
+        entry.IsSelected = true;
+    }
+
+    private void AddCustomFolderToTiles(string folderPath)
+    {
+        if (GameTilesList.ItemsSource is not System.Collections.Generic.List<GameEntry> games) return;
+        if (games.Any(g => string.Equals(g.FolderPath, folderPath, StringComparison.OrdinalIgnoreCase))) return;
+
+        var entry = _gameLibraryScanner.CreateEntryForFolder(folderPath);
+        if (entry == null) return;
+
+        if (_latest?.LatestVersion != null &&
+            entry.DlssVersion != null &&
+            Version.TryParse(entry.DlssVersion, out var gameVer) &&
+            Version.TryParse(_latest.LatestVersion, out var latestVer))
+        {
+            entry.NeedsUpdate = gameVer < latestVer;
+        }
+
+        var newList = games.Concat(new[] { entry }).OrderBy(g => g.Name).ToList();
+        GameTilesList.ItemsSource = newList;
+        GamesPanelBorder.Visibility = Visibility.Visible;
     }
 
     private async Task ScanAsync()
@@ -267,7 +310,6 @@ public partial class MainWindow : Window
         }
 
         _latest = await FetchLatestDlssVersionAsync();
-        _hasBackup = DetermineHasBackup();
 
         UpdateContextUi();
         UpdateButtonsState();
@@ -301,6 +343,7 @@ public partial class MainWindow : Window
 
         await RunBusy(async () =>
         {
+            var progressWin = new UpdateProgressWindow { Owner = this };
             try
             {
                 _latest ??= await FetchLatestDlssVersionAsync();
@@ -310,13 +353,12 @@ public partial class MainWindow : Window
                     return;
                 }
 
-                var downloadProgress = new Progress<double>(p =>
-                {
-                    BusyBar.IsIndeterminate = false;
-                    BusyBar.Value = p * 100;
-                    BusyProgressText.Visibility = Visibility.Visible;
-                    BusyProgressText.Text = $"{(int)(p * 100)}%";
-                });
+                var currentVer = _context.DetectedVersion?.FileVersion?.Replace(',', '.');
+                if (currentVer != null) currentVer = FormatVersionForDisplay(currentVer);
+                progressWin.SetVersionLine(currentVer ?? "?", _latest.LatestVersion ?? "?");
+                progressWin.Show();
+
+                var prog = new Progress<AppUpdateProgress>(p => progressWin.Report(p));
 
                 string tempPath;
                 try
@@ -327,7 +369,7 @@ public partial class MainWindow : Window
                         throw new InvalidOperationException("No release found in NVIDIA/DLSS repository.");
 
                     tempPath = await _updater.DownloadAsync(nvRelease.DownloadUrl, _context.DlssDllPath!,
-                        expectedSha256: null, progress: downloadProgress);
+                        expectedSha256: null, progress: prog);
                 }
                 catch
                 {
@@ -335,22 +377,22 @@ public partial class MainWindow : Window
                     if (!File.Exists(_bundledDlssZip))
                         throw;
 
-                    BusyProgressText.Visibility = Visibility.Collapsed;
-                    BusyBar.IsIndeterminate = true;
+                    progressWin.Report(new AppUpdateProgress("Установка из встроенного архива…"));
                     tempPath = await _updater.UseLocalAsync(_bundledDlssZip, _context.DlssDllPath!, _latest.Sha256);
                 }
 
-                _updater.ReplaceWithBackup(tempPath, _context.DlssDllPath!, _backup);
+                _updater.Replace(tempPath, _context.DlssDllPath!);
                 _context = await Task.Run(() => _scanner.Scan(_context.FolderPath));
-                _hasBackup = DetermineHasBackup();
 
+                progressWin.Close();
                 UpdateContextUi();
                 RefreshCurrentGameTile();
                 UpdateButtonsState();
-                ShowInfo(T("dlss_updated_backup_created"));
+                ShowInfo(T("dlss_updated"));
             }
             catch (Exception ex)
             {
+                progressWin.Close();
                 await TryLocalUpdate(ex.Message);
             }
         });
@@ -385,9 +427,8 @@ public partial class MainWindow : Window
         try
         {
             var tempPath = await _updater.UseLocalAsync(localPath, _context.DlssDllPath!, _latest?.Sha256);
-            _updater.ReplaceWithBackup(tempPath, _context.DlssDllPath!, _backup);
+            _updater.Replace(tempPath, _context.DlssDllPath!);
             _context = _scanner.Scan(_context.FolderPath);
-            _hasBackup = DetermineHasBackup();
 
             UpdateContextUi();
             RefreshCurrentGameTile();
@@ -427,60 +468,58 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnRollback(object sender, RoutedEventArgs e)
+    private async void OnSelectVersion(object sender, RoutedEventArgs e)
     {
-        if (_isBusy)
-        {
-            return;
-        }
-
+        if (_isBusy) return;
         if (string.IsNullOrWhiteSpace(_context.DlssDllPath))
         {
             ShowWarning(T("dll_not_found"));
             return;
         }
 
-        var gameName = new DirectoryInfo(_context.FolderPath).Name;
-        var backupPath = _backup.GetLatestBackup(gameName);
-        if (backupPath == null)
-        {
-            ShowWarning(T("backup_not_found"));
-            return;
-        }
+        var currentVer = _context.DetectedVersion?.FileVersion?.Replace(',', '.');
+        if (currentVer != null) currentVer = FormatVersionForDisplay(currentVer);
 
-        try
-        {
-            File.Copy(backupPath, _context.DlssDllPath, overwrite: true);
-        }
-        catch (Exception ex)
-        {
-            ShowError(TF("rollback_error", ex.Message));
-            return;
-        }
+        var picker = new VersionPickerWindow(currentVer) { Owner = this };
+        if (picker.ShowDialog() != true) return;
 
-        try
+        await RunBusy(async () =>
         {
-            File.Delete(backupPath);
-            var dir = Path.GetDirectoryName(backupPath);
-            if (!string.IsNullOrWhiteSpace(dir) &&
-                Directory.Exists(dir) &&
-                !Directory.EnumerateFileSystemEntries(dir).Any())
+            var progressWin = new UpdateProgressWindow { Owner = this };
+            try
             {
-                Directory.Delete(dir, recursive: false);
+                string tempPath;
+
+                if (picker.SelectedDownloadUrl != null)
+                {
+                    progressWin.Show();
+                    var prog = new Progress<AppUpdateProgress>(p => progressWin.Report(p));
+                    tempPath = await _updater.DownloadAsync(
+                        picker.SelectedDownloadUrl, _context.DlssDllPath!, progress: prog);
+                }
+                else if (picker.SelectedLocalPath != null)
+                {
+                    progressWin.Report(new AppUpdateProgress("Установка из локального файла…"));
+                    progressWin.Show();
+                    tempPath = await _updater.UseLocalAsync(picker.SelectedLocalPath, _context.DlssDllPath!);
+                }
+                else return;
+
+                _updater.Replace(tempPath, _context.DlssDllPath!);
+                _context = await Task.Run(() => _scanner.Scan(_context.FolderPath));
+
+                progressWin.Close();
+                UpdateContextUi();
+                RefreshCurrentGameTile();
+                UpdateButtonsState();
+                ShowInfo(T("dlss_updated"));
             }
-        }
-        catch
-        {
-            // Cleanup failure is non-critical
-        }
-
-        _context = _scanner.Scan(_context.FolderPath);
-        _hasBackup = DetermineHasBackup();
-
-        UpdateContextUi();
-        RefreshCurrentGameTile();
-        UpdateButtonsState();
-        ShowInfo(T("rollback_completed"));
+            catch (Exception ex)
+            {
+                progressWin.Close();
+                ShowError(TF("local_update_error", ex.Message));
+            }
+        });
     }
 
     private async void OnApplyTweaks(object sender, RoutedEventArgs e)
@@ -651,15 +690,9 @@ public partial class MainWindow : Window
                 if (!string.IsNullOrWhiteSpace(release.DownloadUrl))
                 {
                     var progressWin = new UpdateProgressWindow { Owner = this };
+                    progressWin.SetVersionLine(AppVersion, release.Version);
                     progressWin.Show();
-                    var prog = new Progress<(string status, double? value)>(t =>
-                    {
-                        if (t.value.HasValue)
-                            progressWin.SetProgress(t.value.Value);
-                        else
-                            progressWin.SetIndeterminate(t.status);
-                        progressWin.SetStatus(t.status);
-                    });
+                    var prog = new Progress<AppUpdateProgress>(p => progressWin.Report(p));
                     await _appSelfUpdater.ApplyAsync(release.DownloadUrl, prog);
                 }
                 else
@@ -757,6 +790,39 @@ public partial class MainWindow : Window
         tile.NeedsUpdate = newNeedsUpdate;
     }
 
+    private async Task LoadMissingSteamIconsAsync(List<GameEntry> games)
+    {
+        var iconCacheDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon_cache");
+        try { Directory.CreateDirectory(iconCacheDir); } catch { return; }
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+        foreach (var game in games.Where(g => g.Icon == null && g.SteamAppId != null))
+        {
+            var cachedPath = Path.Combine(iconCacheDir, $"{game.SteamAppId}.jpg");
+            ImageSource? icon = null;
+
+            if (File.Exists(cachedPath))
+            {
+                icon = GameLibraryScanner.LoadImageFromFile(cachedPath);
+            }
+            else
+            {
+                try
+                {
+                    var url = $"https://cdn.akamai.steamstatic.com/steam/apps/{game.SteamAppId}/header.jpg";
+                    var bytes = await http.GetByteArrayAsync(url);
+                    await File.WriteAllBytesAsync(cachedPath, bytes);
+                    icon = GameLibraryScanner.LoadImageFromBytes(bytes);
+                }
+                catch { }
+            }
+
+            if (icon != null)
+                game.Icon = icon;
+        }
+    }
+
     private static string FormatVersionForDisplay(string versionText)
     {
         if (!Version.TryParse(versionText, out var version))
@@ -797,7 +863,7 @@ public partial class MainWindow : Window
         UpdateStatusText.Text = updateNeeded == false ? T("update_not_required") : string.Empty;
         UpdateStatusText.Visibility = updateNeeded == false ? Visibility.Visible : Visibility.Collapsed;
 
-        RollbackButton.Visibility = _hasBackup ? Visibility.Visible : Visibility.Collapsed;
+        VersionButton.Visibility = hasDll ? Visibility.Visible : Visibility.Collapsed;
         ApplyTweaksButton.Visibility = hasGameFolder ? Visibility.Visible : Visibility.Collapsed;
         RemoveTweaksButton.Visibility = tweaksInstalled ? Visibility.Visible : Visibility.Collapsed;
 
@@ -852,17 +918,6 @@ public partial class MainWindow : Window
         };
 
         return names.Any(name => File.Exists(Path.Combine(_context.FolderPath, name)));
-    }
-
-    private bool DetermineHasBackup()
-    {
-        if (string.IsNullOrWhiteSpace(_context.FolderPath) || !Directory.Exists(_context.FolderPath))
-        {
-            return false;
-        }
-
-        var gameName = new DirectoryInfo(_context.FolderPath).Name;
-        return _backup.GetLatestBackup(gameName) != null;
     }
 
     private async Task RunBusy(Func<Task> action)

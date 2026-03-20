@@ -2,7 +2,7 @@
   "defaultLanguage": "en",
   "languages": {
     "ru": {
-      "window_title": "DLSS Checker v0.0.5",
+      "window_title": "DLSS Checker",
       "app_name": "DLSS Checker",
       "subtitle": "Проверка и обновление nvngx_dlss + DLSSTweaks",
       "select_game_folder": "Выберите папку игры",
@@ -15,7 +15,8 @@
       "version_in_game": "Версия в игре",
       "latest_version": "Последняя версия",
       "update_dlss": "Обновить DLSS",
-      "rollback_dlss": "Откатить DLSS",
+      "select_version_dlss": "Выбор версии",
+      "dlss_updated": "DLSS обновлён.",
       "update_not_required": "Обновление не требуется",
       "preset": "Пресет:",
       "apply": "Применить",
@@ -67,7 +68,7 @@
       "shortcut_error": "Не удалось создать ярлык: {0}"
     },
     "en": {
-      "window_title": "DLSS Checker v0.0.5",
+      "window_title": "DLSS Checker",
       "app_name": "DLSS Checker",
       "subtitle": "Check and update nvngx_dlss + DLSSTweaks",
       "select_game_folder": "Select game folder",
@@ -80,7 +81,8 @@
       "version_in_game": "Game version",
       "latest_version": "Latest version",
       "update_dlss": "Update DLSS",
-      "rollback_dlss": "Rollback DLSS",
+      "select_version_dlss": "Select version",
+      "dlss_updated": "DLSS updated.",
       "update_not_required": "Update not required",
       "preset": "Preset:",
       "apply": "Apply",

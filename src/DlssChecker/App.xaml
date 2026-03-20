@@ -1,7 +1,6 @@
 <Application x:Class="DlssChecker.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <Color x:Key="BgTop">#0b1426</Color>
         <Color x:Key="BgBottom">#0f1e33</Color>

@@ -9,6 +9,14 @@ using WpfApp = System.Windows.Application;
 
 namespace DlssChecker.Services;
 
+public record AppUpdateProgress(
+    string Status,
+    double? Fraction = null,
+    long DownloadedBytes = 0,
+    long TotalBytes = 0,
+    double SpeedMBps = 0
+);
+
 public sealed class AppSelfUpdater
 {
     private static readonly HttpClient HttpClient = CreateClient();
@@ -22,38 +30,62 @@ public sealed class AppSelfUpdater
         }
     }
 
-    public async Task ApplyAsync(string downloadUrl, IProgress<(string status, double? progress)>? progress = null)
+    public async Task ApplyAsync(string downloadUrl, IProgress<AppUpdateProgress>? progress = null)
     {
         var appDir = AppDomain.CurrentDomain.BaseDirectory;
         var currentExe = Environment.ProcessPath
             ?? Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("Could not resolve executable path.");
 
-        progress?.Report(("Загрузка обновления…", 0));
+        progress?.Report(new AppUpdateProgress("Загрузка обновления…", 0));
+
         using var response = await HttpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
 
         var totalBytes = response.Content.Headers.ContentLength ?? -1L;
         await using var contentStream = await response.Content.ReadAsStreamAsync();
         using var ms = new MemoryStream(totalBytes > 0 ? (int)totalBytes : 8 * 1024 * 1024);
+
         var buffer = new byte[81920];
         long downloaded = 0;
+        var sw = Stopwatch.StartNew();
+        long lastSpeedBytes = 0;
+        double lastSpeedTime = 0;
+        double currentSpeedMBps = 0;
+
         int read;
         while ((read = await contentStream.ReadAsync(buffer)) > 0)
         {
             await ms.WriteAsync(buffer.AsMemory(0, read));
             downloaded += read;
+
+            // Update speed every ~500 ms
+            var elapsed = sw.Elapsed.TotalSeconds;
+            if (elapsed - lastSpeedTime >= 0.5)
+            {
+                var bytesDelta = downloaded - lastSpeedBytes;
+                var timeDelta = elapsed - lastSpeedTime;
+                currentSpeedMBps = bytesDelta / timeDelta / 1_048_576.0;
+                lastSpeedBytes = downloaded;
+                lastSpeedTime = elapsed;
+            }
+
             if (totalBytes > 0)
-                progress?.Report(("Загрузка обновления…", (double)downloaded / totalBytes));
+                progress?.Report(new AppUpdateProgress(
+                    "Загрузка обновления…",
+                    (double)downloaded / totalBytes,
+                    downloaded,
+                    totalBytes,
+                    currentSpeedMBps));
         }
-        var zipBytes = ms.ToArray();
-        progress?.Report(("Установка обновления…", null));
+
+        progress?.Report(new AppUpdateProgress("Установка обновления…"));
 
         var tempDir = Path.Combine(Path.GetTempPath(), $"DlssCheckerUpd_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
         try
         {
-            using (var zipMs = new MemoryStream(zipBytes))
+            using (var zipMs = new MemoryStream(ms.ToArray()))
             using (var archive = new ZipArchive(zipMs, ZipArchiveMode.Read))
             {
                 archive.ExtractToDirectory(tempDir, overwriteFiles: true);
@@ -69,11 +101,8 @@ public sealed class AppSelfUpdater
             }
             catch
             {
-                // Restore original exe so the app still works
                 if (!File.Exists(currentExe))
-                {
                     try { File.Move(oldExe, currentExe); } catch { }
-                }
                 throw;
             }
         }
@@ -82,7 +111,6 @@ public sealed class AppSelfUpdater
             try { Directory.Delete(tempDir, recursive: true); } catch { }
         }
 
-        // Signal new process to show changelog on first launch
         var flagPath = Path.Combine(appDir, ".updated");
         await File.WriteAllTextAsync(flagPath, string.Empty);
 
@@ -100,20 +128,16 @@ public sealed class AppSelfUpdater
     {
         Directory.CreateDirectory(dst);
         foreach (var file in Directory.EnumerateFiles(src))
-        {
             File.Copy(file, Path.Combine(dst, Path.GetFileName(file)), overwrite: true);
-        }
         foreach (var sub in Directory.EnumerateDirectories(src))
-        {
             CopyDirectory(sub, Path.Combine(dst, Path.GetFileName(sub)));
-        }
     }
 
     private static HttpClient CreateClient()
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("DlssChecker", "0.0.5"));
+            new ProductInfoHeaderValue("DlssChecker", AppInfo.Version));
         return client;
     }
 }

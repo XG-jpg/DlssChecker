@@ -8,7 +8,19 @@ public sealed class GameEntry : INotifyPropertyChanged
     public string Name { get; init; } = string.Empty;
     public string FolderPath { get; init; } = string.Empty;
     public string? DlssVersion { get; init; }
-    public ImageSource? Icon { get; init; }
+    public string? SteamAppId { get; init; }
+
+    private ImageSource? _icon;
+    public ImageSource? Icon
+    {
+        get => _icon;
+        set
+        {
+            if (_icon == value) return;
+            _icon = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon)));
+        }
+    }
 
     private bool? _needsUpdate;
     public bool? NeedsUpdate  // null = unknown, true = update available, false = up to date

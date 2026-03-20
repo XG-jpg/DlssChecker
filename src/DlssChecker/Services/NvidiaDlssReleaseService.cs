@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -10,15 +11,19 @@ namespace DlssChecker.Services;
 public sealed class NvidiaDlssReleaseService
 {
     private static readonly HttpClient HttpClient = CreateClient();
-    private const string ApiUrl = "https://api.github.com/repos/NVIDIA/DLSS/releases/latest";
+    private const string LatestApiUrl = "https://api.github.com/repos/NVIDIA/DLSS/releases/latest";
+    private const string AllReleasesApiUrl = "https://api.github.com/repos/NVIDIA/DLSS/releases?per_page=30";
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromHours(1);
+    private static readonly string CacheFile =
+        System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "dlss_versions_cache.json");
 
     public async Task<NvidiaDlssRelease?> GetLatestAsync()
     {
-        using var response = await HttpClient.GetAsync(ApiUrl);
+        using var response = await HttpClient.GetAsync(LatestApiUrl);
 
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden ||
             response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-            return null; // rate limited — caller falls back to local
+            return null;
 
         response.EnsureSuccessStatusCode();
 
@@ -34,15 +39,93 @@ public sealed class NvidiaDlssReleaseService
         return new NvidiaDlssRelease
         {
             DownloadUrl = asset.BrowserDownloadUrl,
-            Version = NormalizeVersion(dto.TagName)
+            Version = NormalizeVersion(dto.TagName),
+            PublishedAt = dto.PublishedAt
         };
+    }
+
+    public async Task<List<NvidiaDlssRelease>> GetAllReleasesAsync()
+    {
+        // Return cached data if fresh enough
+        var cached = TryLoadCache();
+        if (cached != null) return cached;
+
+        // Fetch from GitHub
+        using var response = await HttpClient.GetAsync(AllReleasesApiUrl);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+            response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            // Return stale cache rather than failing with no data
+            var stale = TryLoadCache(ignoreAge: true);
+            if (stale != null) return stale;
+            throw new InvalidOperationException("Превышен лимит запросов GitHub API (60/час). Подождите немного и попробуйте снова.");
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        var dtos = await JsonSerializer.DeserializeAsync<ReleaseDto[]>(stream,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (dtos == null) return [];
+
+        var result = new List<NvidiaDlssRelease>();
+        foreach (var dto in dtos)
+        {
+            var asset = PickWindowsAsset(dto);
+            if (asset?.BrowserDownloadUrl == null) continue;
+
+            result.Add(new NvidiaDlssRelease
+            {
+                DownloadUrl = asset.BrowserDownloadUrl,
+                Version = NormalizeVersion(dto.TagName),
+                PublishedAt = dto.PublishedAt
+            });
+        }
+
+        SaveCache(result);
+        return result;
+    }
+
+    private static List<NvidiaDlssRelease>? TryLoadCache(bool ignoreAge = false)
+    {
+        try
+        {
+            if (!System.IO.File.Exists(CacheFile)) return null;
+
+            var json = System.IO.File.ReadAllText(CacheFile);
+            var cache = JsonSerializer.Deserialize<CacheDto>(json);
+            if (cache == null) return null;
+
+            if (!ignoreAge && DateTime.UtcNow - cache.SavedAt > CacheTtl) return null;
+
+            return cache.Releases;
+        }
+        catch { return null; }
+    }
+
+    private static void SaveCache(List<NvidiaDlssRelease> releases)
+    {
+        try
+        {
+            var cache = new CacheDto { SavedAt = DateTime.UtcNow, Releases = releases };
+            System.IO.File.WriteAllText(CacheFile,
+                JsonSerializer.Serialize(cache, new JsonSerializerOptions { WriteIndented = false }));
+        }
+        catch { }
+    }
+
+    private sealed class CacheDto
+    {
+        public DateTime SavedAt { get; set; }
+        public List<NvidiaDlssRelease> Releases { get; set; } = [];
     }
 
     private static ReleaseAssetDto? PickWindowsAsset(ReleaseDto dto)
     {
         if (dto.Assets == null || dto.Assets.Length == 0) return null;
 
-        // Prefer the _windows.zip (demo app that bundles nvngx_dlss.dll)
         foreach (var asset in dto.Assets)
         {
             var name = asset.Name ?? string.Empty;
@@ -50,7 +133,6 @@ public sealed class NvidiaDlssReleaseService
                 return asset;
         }
 
-        // Fallback: any zip
         foreach (var asset in dto.Assets)
         {
             if (asset.Name?.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) == true)
@@ -73,7 +155,7 @@ public sealed class NvidiaDlssReleaseService
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("DlssChecker", "0.0.5"));
+            new ProductInfoHeaderValue("DlssChecker", AppInfo.Version));
         client.DefaultRequestHeaders.Accept.Add(
             new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return client;
@@ -83,6 +165,9 @@ public sealed class NvidiaDlssReleaseService
     {
         [JsonPropertyName("tag_name")]
         public string? TagName { get; set; }
+
+        [JsonPropertyName("published_at")]
+        public DateTime PublishedAt { get; set; }
 
         public ReleaseAssetDto[]? Assets { get; set; }
     }
@@ -100,4 +185,5 @@ public sealed class NvidiaDlssRelease
 {
     public string DownloadUrl { get; init; } = string.Empty;
     public string? Version { get; init; }
+    public DateTime PublishedAt { get; init; }
 }
