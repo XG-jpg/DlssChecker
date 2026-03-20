@@ -73,7 +73,7 @@ public sealed class NvidiaDlssReleaseService
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("DlssChecker", "0.0.4"));
+            new ProductInfoHeaderValue("DlssChecker", "0.0.5"));
         client.DefaultRequestHeaders.Accept.Add(
             new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return client;

@@ -10,7 +10,17 @@ public sealed class GameEntry : INotifyPropertyChanged
     public string? DlssVersion { get; init; }
     public ImageSource? Icon { get; init; }
 
-    public bool? NeedsUpdate { get; init; }  // null = unknown, true = update available, false = up to date
+    private bool? _needsUpdate;
+    public bool? NeedsUpdate  // null = unknown, true = update available, false = up to date
+    {
+        get => _needsUpdate;
+        set
+        {
+            if (_needsUpdate == value) return;
+            _needsUpdate = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NeedsUpdate)));
+        }
+    }
 
     private bool _isSelected;
     public bool IsSelected

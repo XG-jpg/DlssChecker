@@ -113,7 +113,7 @@ public sealed class AppSelfUpdater
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("DlssChecker", "0.0.4"));
+            new ProductInfoHeaderValue("DlssChecker", "0.0.5"));
         return client;
     }
 }

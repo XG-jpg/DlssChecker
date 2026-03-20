@@ -113,7 +113,7 @@ public sealed class GitHubReleaseService
     {
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("DlssChecker", "0.0.4"));
+            new ProductInfoHeaderValue("DlssChecker", "0.0.5"));
         client.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         return client;

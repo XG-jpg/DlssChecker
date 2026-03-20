@@ -17,7 +17,7 @@ namespace DlssChecker;
 
 public partial class MainWindow : Window
 {
-    private const string AppVersion = "0.0.4";
+    private const string AppVersion = "0.0.5";
     private const string TweaksVersion = "0.310.5.0";
     private const string RepositoryUrl = "https://github.com/XG-jpg/DllsChecker";
     private const string RepositoryOwner = "XG-jpg";
@@ -345,6 +345,7 @@ public partial class MainWindow : Window
                 _hasBackup = DetermineHasBackup();
 
                 UpdateContextUi();
+                RefreshCurrentGameTile();
                 UpdateButtonsState();
                 ShowInfo(T("dlss_updated_backup_created"));
             }
@@ -389,6 +390,7 @@ public partial class MainWindow : Window
             _hasBackup = DetermineHasBackup();
 
             UpdateContextUi();
+            RefreshCurrentGameTile();
             UpdateButtonsState();
             ShowInfo(T("dlss_updated_from_local"));
         }
@@ -476,6 +478,7 @@ public partial class MainWindow : Window
         _hasBackup = DetermineHasBackup();
 
         UpdateContextUi();
+        RefreshCurrentGameTile();
         UpdateButtonsState();
         ShowInfo(T("rollback_completed"));
     }
@@ -731,6 +734,27 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrWhiteSpace(_context.FolderPath))
             SaveLastFolder(AppDomain.CurrentDomain.BaseDirectory, _context.FolderPath);
+    }
+
+    private void RefreshCurrentGameTile()
+    {
+        if (string.IsNullOrWhiteSpace(_context.FolderPath)) return;
+        if (GameTilesList.ItemsSource is not System.Collections.Generic.List<GameEntry> games) return;
+
+        var tile = games.FirstOrDefault(g =>
+            string.Equals(g.FolderPath, _context.FolderPath, StringComparison.OrdinalIgnoreCase));
+        if (tile == null) return;
+
+        bool? newNeedsUpdate = null;
+        var currentVersion = _context.DetectedVersion?.FileVersion?.Replace(',', '.');
+        if (currentVersion != null && _latest?.LatestVersion != null &&
+            Version.TryParse(currentVersion, out var cv) &&
+            Version.TryParse(_latest.LatestVersion.Replace(',', '.'), out var lv))
+        {
+            newNeedsUpdate = cv < lv;
+        }
+
+        tile.NeedsUpdate = newNeedsUpdate;
     }
 
     private static string FormatVersionForDisplay(string versionText)
